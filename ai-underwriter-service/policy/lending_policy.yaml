@@ -1,0 +1,42 @@
+# Personal Loan — Underwriting Policy (v1.0, synthetic, INR)
+# Source: docs/LENDING_POLICY.pdf. Changing a rule means editing this file,
+# not src/policy_engine/engine.py or any prompt.
+policy:
+  name: "Personal Loan - Underwriting Policy"
+  version: "1.0"
+  currency: INR
+
+emi:
+  formula: "P * r * (1+r)^n / ((1+r)^n - 1)"
+  rate_basis: "annual_rate_percent / 12 / 100"
+
+thresholds:
+  credit_score:
+    decline_below: 650
+    refer_low: 650
+    refer_high: 699
+    approve_min: 700
+  foir:
+    decline_above: 55.0   # percent
+    refer_low: 50.0
+    refer_high: 55.0
+    approve_max: 50.0
+  payment_returns:
+    decline_min: 3
+    refer_exact: 2
+    approve_max: 1
+  salary_credit_months:
+    lookback_months: 6
+    decline_below: 3
+  vintage_months:
+    refer_below: 6
+  bank_balance:
+    refer_below_emi_multiple: 1.0
+  unexplained_deposit:
+    refer_above_income_fraction: 0.5
+
+high_income_override:
+  min_net_monthly_income: 200000
+  max_foir: 35.0   # percent
+  min_credit_score: 680
+  max_payment_returns: 0

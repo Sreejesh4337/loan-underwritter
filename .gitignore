@@ -1,0 +1,29 @@
+# Environment / secrets
+.env
+*.env
+!*.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Node
+node_modules/
+
+# Runtime / generated data
+ai-underwriter-service/data/runs/
+ai-underwriter-service/data/checkpoints.db
+ai-underwriter-service/data/checkpoints.db-shm
+ai-underwriter-service/data/checkpoints.db-wal
+ai-underwriter-service/data/runs_registry.jsonl
+
+# Eval output
+ai-underwriter-service/eval/reports/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store

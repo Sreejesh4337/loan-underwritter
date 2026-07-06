@@ -12,6 +12,7 @@ venv/
 
 # Node
 node_modules/
+dist/
 
 # Runtime / generated data
 ai-underwriter-service/data/runs/

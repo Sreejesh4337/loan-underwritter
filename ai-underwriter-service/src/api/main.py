@@ -103,6 +103,28 @@ def get_all_runs() -> list[RunStatusResponse]:
     return [RunStatusResponse(**r) for r in list_runs()]
 
 
+# Mirrors the node order in build_graph.py. Each node marks itself "running"
+# then "done" within the same synchronous function before its single return,
+# so LangGraph only ever checkpoints the "done" state — "running" is never
+# actually persisted. This list lets the status endpoint infer, for display
+# purposes only, which not-yet-done node is the current frontier.
+_NODE_ORDER = [
+    "plan",
+    "parse_documents",
+    "extract_kyc",
+    "extract_income",
+    "extract_bank_statement",
+    "merge_and_cross_check",
+    "compute_metrics",
+    "evaluate_policy",
+    "decide",
+    "generate_outputs",
+    "done",
+]
+
+_TERMINAL_STATUSES = {"completed", "failed", "failed_input"}
+
+
 @app.get("/runs/{run_id}", response_model=RunStatusResponse)
 def get_run_status(run_id: str) -> RunStatusResponse:
     record = get_run(run_id)
@@ -114,11 +136,16 @@ def get_run_status(run_id: str) -> RunStatusResponse:
     try:
         graph = compile_graph(DEFAULT_CHECKPOINT_DB)
         state = graph.get_state({"configurable": {"thread_id": record["thread_id"]}})
-        step_status = state.values.get("step_status", {})
-        running = [n for n, s in step_status.items() if s.get("status") == "running"]
-        current_step = running[0] if running else None
+        step_status = dict(state.values.get("step_status", {}))
     except Exception:
         pass
+
+    if record["status"] not in _TERMINAL_STATUSES:
+        for node in _NODE_ORDER:
+            if step_status.get(node, {}).get("status") not in ("done", "failed"):
+                current_step = node
+                step_status[node] = {**step_status.get(node, {}), "status": "running"}
+                break
 
     return RunStatusResponse(**record, current_step=current_step, step_status=step_status)
 

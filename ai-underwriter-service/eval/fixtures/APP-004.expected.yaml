@@ -1,0 +1,24 @@
+app_id: APP-004
+confidence: draft
+notes: derived by scripts/derive_ground_truth.py
+expected_decision: approve
+expected_fired_rule_ids: []
+expected_metrics:
+  credit_score:
+    value: 705
+    tolerance_abs: 0
+  net_monthly_income:
+    value: 60000.0
+    tolerance_pct: 2
+  foir_pct:
+    value: 24.4
+    tolerance_abs: 1.5
+  payment_returns_count:
+    value: 1
+    tolerance_abs: 0
+  avg_bank_balance:
+    value: 12999.0
+    tolerance_pct: 5
+  vintage_months:
+    value: 18
+    tolerance_abs: 0

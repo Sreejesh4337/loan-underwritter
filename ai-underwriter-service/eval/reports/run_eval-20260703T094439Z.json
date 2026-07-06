@@ -1,0 +1,811 @@
+{
+  "summary": {
+    "n_scored": 15,
+    "n_skipped": 0,
+    "n_errored": 0,
+    "decision_accuracy": 1.0,
+    "mean_memo_score": 1.0,
+    "mean_excel_score": 1.0,
+    "total_tokens": 0,
+    "total_cost_usd": 0.0,
+    "mean_duration_s": 0.12433824946650324,
+    "failing_apps": []
+  },
+  "results": [
+    {
+      "app_id": "APP-001",
+      "skipped": false,
+      "confidence": "reviewed",
+      "decision_correct": true,
+      "actual_decision": "approve",
+      "expected_decision": "approve",
+      "metrics": {
+        "credit_score": {
+          "ok": true,
+          "delta": 0,
+          "actual": 780,
+          "expected": 780
+        },
+        "net_monthly_income": {
+          "ok": true,
+          "delta": 0.0,
+          "actual": 120000.0,
+          "expected": 120000.0
+        },
+        "foir_pct": {
+          "ok": true,
+          "delta": -0.04451845432058121,
+          "actual": 23.75548154567942,
+          "expected": 23.8
+        },
+        "payment_returns_count": {
+          "ok": true,
+          "delta": 0,
+          "actual": 0,
+          "expected": 0
+        },
+        "avg_bank_balance": {
+          "ok": true,
+          "delta": 0.0,
+          "actual": 41013.0,
+          "expected": 41013.0
+        },
+        "vintage_months": {
+          "ok": true,
+          "delta": 0,
+          "actual": 48,
+          "expected": 48
+        }
+      },
+      "memo_score": 1.0,
+      "memo_failed_checks": [],
+      "excel_score": 1.0,
+      "excel_failed_checks": [],
+      "tokens": 0,
+      "cost_usd": 0.0,
+      "duration_s": 0.13583473900052923
+    },
+    {
+      "app_id": "APP-002",
+      "skipped": false,
+      "confidence": "draft",
+      "decision_correct": true,
+      "actual_decision": "approve",
+      "expected_decision": "approve",
+      "metrics": {
+        "credit_score": {
+          "ok": true,
+          "delta": 0,
+          "actual": 760,
+          "expected": 760
+        },
+        "net_monthly_income": {
+          "ok": true,
+          "delta": 0.0,
+          "actual": 90000.0,
+          "expected": 90000.0
+        },
+        "foir_pct": {
+          "ok": true,
+          "delta": 0.04809880823072632,
+          "actual": 16.948098808230725,
+          "expected": 16.9
+        },
+        "payment_returns_count": {
+          "ok": true,
+          "delta": 0,
+          "actual": 0,
+          "expected": 0
+        },
+        "avg_bank_balance": {
+          "ok": true,
+          "delta": 0.3333333333321207,
+          "actual": 25633.333333333332,
+          "expected": 25633.0
+        },
+        "vintage_months": {
+          "ok": true,
+          "delta": 0,
+          "actual": 30,
+          "expected": 30
+        }
+      },
+      "memo_score": 1.0,
+      "memo_failed_checks": [],
+      "excel_score": 1.0,
+      "excel_failed_checks": [],
+      "tokens": 0,
+      "cost_usd": 0.0,
+      "duration_s": 0.11834021899994696
+    },
+    {
+      "app_id": "APP-003",
+      "skipped": false,
+      "confidence": "draft",
+      "decision_correct": true,
+      "actual_decision": "approve",
+      "expected_decision": "approve",
+      "metrics": {
+        "credit_score": {
+          "ok": true,
+          "delta": 0,
+          "actual": 810,
+          "expected": 810
+        },
+        "net_monthly_income": {
+          "ok": true,
+          "delta": 0.0,
+          "actual": 150000.0,
+          "expected": 150000.0
+        },
+        "foir_pct": {
+          "ok": true,
+          "delta": 0.007997810008026462,
+          "actual": 14.307997810008027,
+          "expected": 14.3
+        },
+        "payment_returns_count": {
+          "ok": true,
+          "delta": 0,
+          "actual": 0,
+          "expected": 0
+        },
+        "avg_bank_balance": {
+          "ok": true,
+          "delta": 0.16666666666424135,
+          "actual": 38631.166666666664,
+          "expected": 38631.0
+        },
+        "vintage_months": {
+          "ok": true,
+          "delta": 0,
+          "actual": 60,
+          "expected": 60
+        }
+      },
+      "memo_score": 1.0,
+      "memo_failed_checks": [],
+      "excel_score": 1.0,
+      "excel_failed_checks": [],
+      "tokens": 0,
+      "cost_usd": 0.0,
+      "duration_s": 0.10345309000058478
+    },
+    {
+      "app_id": "APP-004",
+      "skipped": false,
+      "confidence": "draft",
+      "decision_correct": true,
+      "actual_decision": "approve",
+      "expected_decision": "approve",
+      "metrics": {
+        "credit_score": {
+          "ok": true,
+          "delta": 0,
+          "actual": 705,
+          "expected": 705
+        },
+        "net_monthly_income": {
+          "ok": true,
+          "delta": 0.0,
+          "actual": 60000.0,
+          "expected": 60000.0
+        },
+        "foir_pct": {
+          "ok": true,
+          "delta": 0.043886876747592396,
+          "actual": 24.44388687674759,
+          "expected": 24.4
+        },
+        "payment_returns_count": {
+          "ok": true,
+          "delta": 0,
+          "actual": 1,
+          "expected": 1
+        },
+        "avg_bank_balance": {
+          "ok": true,
+          "delta": 0.0,
+          "actual": 12999.0,
+          "expected": 12999.0
+        },
+        "vintage_months": {
+          "ok": true,
+          "delta": 0,
+          "actual": 18,
+          "expected": 18
+        }
+      },
+      "memo_score": 1.0,
+      "memo_failed_checks": [],
+      "excel_score": 1.0,
+      "excel_failed_checks": [],
+      "tokens": 0,
+      "cost_usd": 0.0,
+      "duration_s": 0.12038269999993645
+    },
+    {
+      "app_id": "APP-005",
+      "skipped": false,
+      "confidence": "draft",
+      "decision_correct": true,
+      "actual_decision": "approve",
+      "expected_decision": "approve",
+      "metrics": {
+        "credit_score": {
+          "ok": true,
+          "delta": 0,
+          "actual": 720,
+          "expected": 720
+        },
+        "net_monthly_income": {
+          "ok": true,
+          "delta": 0.0,
+          "actual": 75000.0,
+          "expected": 75000.0
+        },
+        "foir_pct": {
+          "ok": true,
+          "delta": -0.03386859832231082,
+          "actual": 29.866131401677688,
+          "expected": 29.9
+        },
+        "payment_returns_count": {
+          "ok": true,
+          "delta": 0,
+          "actual": 0,
+          "expected": 0
+        },
+        "avg_bank_balance": {
+          "ok": true,
+          "delta": 0.0,
+          "actual": 12480.0,
+          "expected": 12480.0
+        },
+        "vintage_months": {
+          "ok": true,
+          "delta": 0,
+          "actual": 24,
+          "expected": 24
+        }
+      },
+      "memo_score": 1.0,
+      "memo_failed_checks": [],
+      "excel_score": 1.0,
+      "excel_failed_checks": [],
+      "tokens": 0,
+      "cost_usd": 0.0,
+      "duration_s": 0.11853313299980073
+    },
+    {
+      "app_id": "APP-006",
+      "skipped": false,
+      "confidence": "draft",
+      "decision_correct": true,
+      "actual_decision": "refer",
+      "expected_decision": "refer",
+      "metrics": {
+        "credit_score": {
+          "ok": true,
+          "delta": 0,
+          "actual": 680,
+          "expected": 680
+        },
+        "net_monthly_income": {
+          "ok": true,
+          "delta": 0.0,
+          "actual": 70000.0,
+          "expected": 70000.0
+        },
+        "foir_pct": {
+          "ok": true,
+          "delta": 0.023331608640791757,
+          "actual": 19.52333160864079,
+          "expected": 19.5
+        },
+        "payment_returns_count": {
+          "ok": true,
+          "delta": 0,
+          "actual": 0,
+          "expected": 0
+        },
+        "avg_bank_balance": {
+          "ok": true,
+          "delta": -0.5,
+          "actual": 12999.5,
+          "expected": 13000.0
+        },
+        "vintage_months": {
+          "ok": true,
+          "delta": 0,
+          "actual": 24,
+          "expected": 24
+        }
+      },
+      "memo_score": 1.0,
+      "memo_failed_checks": [],
+      "excel_score": 1.0,
+      "excel_failed_checks": [],
+      "tokens": 0,
+      "cost_usd": 0.0,
+      "duration_s": 0.12138461899940012
+    },
+    {
+      "app_id": "APP-007",
+      "skipped": false,
+      "confidence": "draft",
+      "decision_correct": true,
+      "actual_decision": "refer",
+      "expected_decision": "refer",
+      "metrics": {
+        "credit_score": {
+          "ok": true,
+          "delta": 0,
+          "actual": 740,
+          "expected": 740
+        },
+        "net_monthly_income": {
+          "ok": true,
+          "delta": 0.0,
+          "actual": 50000.0,
+          "expected": 50000.0
+        },
+        "foir_pct": {
+          "ok": true,
+          "delta": 0.03226280335537268,
+          "actual": 51.732262803355376,
+          "expected": 51.7
+        },
+        "payment_returns_count": {
+          "ok": true,
+          "delta": 0,
+          "actual": 0,
+          "expected": 0
+        },
+        "avg_bank_balance": {
+          "ok": true,
+          "delta": 0.16666666666787933,
+          "actual": 16639.166666666668,
+          "expected": 16639.0
+        },
+        "vintage_months": {
+          "ok": true,
+          "delta": 0,
+          "actual": 24,
+          "expected": 24
+        }
+      },
+      "memo_score": 1.0,
+      "memo_failed_checks": [],
+      "excel_score": 1.0,
+      "excel_failed_checks": [],
+      "tokens": 0,
+      "cost_usd": 0.0,
+      "duration_s": 0.1584622769996713
+    },
+    {
+      "app_id": "APP-008",
+      "skipped": false,
+      "confidence": "reviewed",
+      "decision_correct": true,
+      "actual_decision": "refer",
+      "expected_decision": "refer",
+      "metrics": {
+        "credit_score": {
+          "ok": true,
+          "delta": 0,
+          "actual": 730,
+          "expected": 730
+        },
+        "net_monthly_income": {
+          "ok": true,
+          "delta": 0.0,
+          "actual": 80000.0,
+          "expected": 80000.0
+        },
+        "foir_pct": {
+          "ok": true,
+          "delta": 0.0166111592595648,
+          "actual": 20.316611159259566,
+          "expected": 20.3
+        },
+        "payment_returns_count": {
+          "ok": true,
+          "delta": 0,
+          "actual": 2,
+          "expected": 2
+        },
+        "avg_bank_balance": {
+          "ok": true,
+          "delta": -0.16666666666606034,
+          "actual": 15379.833333333334,
+          "expected": 15380.0
+        },
+        "vintage_months": {
+          "ok": true,
+          "delta": 0,
+          "actual": 36,
+          "expected": 36
+        }
+      },
+      "memo_score": 1.0,
+      "memo_failed_checks": [],
+      "excel_score": 1.0,
+      "excel_failed_checks": [],
+      "tokens": 0,
+      "cost_usd": 0.0,
+      "duration_s": 0.12279944500005513
+    },
+    {
+      "app_id": "APP-009",
+      "skipped": false,
+      "confidence": "reviewed",
+      "decision_correct": true,
+      "actual_decision": "refer",
+      "expected_decision": "refer",
+      "metrics": {
+        "credit_score": {
+          "ok": true,
+          "delta": 0,
+          "actual": 745,
+          "expected": 745
+        },
+        "net_monthly_income": {
+          "ok": true,
+          "delta": 0.0,
+          "actual": 95000.0,
+          "expected": 95000.0
+        },
+        "foir_pct": {
+          "ok": true,
+          "delta": 0.0022846476936067006,
+          "actual": 16.802284647693607,
+          "expected": 16.8
+        },
+        "payment_returns_count": {
+          "ok": true,
+          "delta": 0,
+          "actual": 0,
+          "expected": 0
+        },
+        "avg_bank_balance": {
+          "ok": true,
+          "delta": 0.0,
+          "actual": 16747.0,
+          "expected": 16747.0
+        },
+        "vintage_months": {
+          "ok": true,
+          "delta": 0,
+          "actual": 3,
+          "expected": 3
+        }
+      },
+      "memo_score": 1.0,
+      "memo_failed_checks": [],
+      "excel_score": 1.0,
+      "excel_failed_checks": [],
+      "tokens": 0,
+      "cost_usd": 0.0,
+      "duration_s": 0.11507022400019196
+    },
+    {
+      "app_id": "APP-010",
+      "skipped": false,
+      "confidence": "reviewed",
+      "decision_correct": true,
+      "actual_decision": "decline",
+      "expected_decision": "decline",
+      "metrics": {
+        "credit_score": {
+          "ok": true,
+          "delta": 0,
+          "actual": 610,
+          "expected": 610
+        },
+        "net_monthly_income": {
+          "ok": true,
+          "delta": 0.0,
+          "actual": 70000.0,
+          "expected": 70000.0
+        },
+        "foir_pct": {
+          "ok": true,
+          "delta": -0.004128698707177136,
+          "actual": 26.495871301292823,
+          "expected": 26.5
+        },
+        "payment_returns_count": {
+          "ok": true,
+          "delta": 0,
+          "actual": 1,
+          "expected": 1
+        },
+        "avg_bank_balance": {
+          "ok": true,
+          "delta": -0.33333333333393966,
+          "actual": 10546.666666666666,
+          "expected": 10547.0
+        },
+        "vintage_months": {
+          "ok": true,
+          "delta": 0,
+          "actual": 20,
+          "expected": 20
+        }
+      },
+      "memo_score": 1.0,
+      "memo_failed_checks": [],
+      "excel_score": 1.0,
+      "excel_failed_checks": [],
+      "tokens": 0,
+      "cost_usd": 0.0,
+      "duration_s": 0.12178590699932101
+    },
+    {
+      "app_id": "APP-011",
+      "skipped": false,
+      "confidence": "draft",
+      "decision_correct": true,
+      "actual_decision": "decline",
+      "expected_decision": "decline",
+      "metrics": {
+        "credit_score": {
+          "ok": true,
+          "delta": 0,
+          "actual": 720,
+          "expected": 720
+        },
+        "net_monthly_income": {
+          "ok": true,
+          "delta": 0.0,
+          "actual": 40000.0,
+          "expected": 40000.0
+        },
+        "foir_pct": {
+          "ok": true,
+          "delta": -0.042966963650087564,
+          "actual": 60.157033036349915,
+          "expected": 60.2
+        },
+        "payment_returns_count": {
+          "ok": true,
+          "delta": 0,
+          "actual": 0,
+          "expected": 0
+        },
+        "avg_bank_balance": {
+          "ok": true,
+          "delta": 0.16666666666606034,
+          "actual": 14063.166666666666,
+          "expected": 14063.0
+        },
+        "vintage_months": {
+          "ok": true,
+          "delta": 0,
+          "actual": 24,
+          "expected": 24
+        }
+      },
+      "memo_score": 1.0,
+      "memo_failed_checks": [],
+      "excel_score": 1.0,
+      "excel_failed_checks": [],
+      "tokens": 0,
+      "cost_usd": 0.0,
+      "duration_s": 0.16634026299925608
+    },
+    {
+      "app_id": "APP-012",
+      "skipped": false,
+      "confidence": "reviewed",
+      "decision_correct": true,
+      "actual_decision": "decline",
+      "expected_decision": "decline",
+      "metrics": {
+        "credit_score": {
+          "ok": true,
+          "delta": 0,
+          "actual": 705,
+          "expected": 705
+        },
+        "net_monthly_income": {
+          "ok": true,
+          "delta": 0.0,
+          "actual": 85000.0,
+          "expected": 85000.0
+        },
+        "foir_pct": {
+          "ok": true,
+          "delta": -0.021962204648758643,
+          "actual": 16.078037795351243,
+          "expected": 16.1
+        },
+        "payment_returns_count": {
+          "ok": true,
+          "delta": 0,
+          "actual": 4,
+          "expected": 4
+        },
+        "avg_bank_balance": {
+          "ok": true,
+          "delta": 0.16666666666606034,
+          "actual": 10399.166666666666,
+          "expected": 10399.0
+        },
+        "vintage_months": {
+          "ok": true,
+          "delta": 0,
+          "actual": 30,
+          "expected": 30
+        }
+      },
+      "memo_score": 1.0,
+      "memo_failed_checks": [],
+      "excel_score": 1.0,
+      "excel_failed_checks": [],
+      "tokens": 0,
+      "cost_usd": 0.0,
+      "duration_s": 0.11666277299991634
+    },
+    {
+      "app_id": "APP-013",
+      "skipped": false,
+      "confidence": "reviewed",
+      "decision_correct": true,
+      "actual_decision": "approve",
+      "expected_decision": "approve",
+      "metrics": {
+        "credit_score": {
+          "ok": true,
+          "delta": 0,
+          "actual": 685,
+          "expected": 685
+        },
+        "net_monthly_income": {
+          "ok": true,
+          "delta": 0.0,
+          "actual": 250000.0,
+          "expected": 250000.0
+        },
+        "foir_pct": {
+          "ok": true,
+          "delta": -0.015201313995182986,
+          "actual": 12.584798686004817,
+          "expected": 12.6
+        },
+        "payment_returns_count": {
+          "ok": true,
+          "delta": 0,
+          "actual": 0,
+          "expected": 0
+        },
+        "avg_bank_balance": {
+          "ok": true,
+          "delta": 0.33333333333575865,
+          "actual": 42924.333333333336,
+          "expected": 42924.0
+        },
+        "vintage_months": {
+          "ok": true,
+          "delta": 0,
+          "actual": 60,
+          "expected": 60
+        }
+      },
+      "memo_score": 1.0,
+      "memo_failed_checks": [],
+      "excel_score": 1.0,
+      "excel_failed_checks": [],
+      "tokens": 0,
+      "cost_usd": 0.0,
+      "duration_s": 0.10926962099983939
+    },
+    {
+      "app_id": "APP-014",
+      "skipped": false,
+      "confidence": "reviewed",
+      "decision_correct": true,
+      "actual_decision": "refer",
+      "expected_decision": "refer",
+      "metrics": {
+        "credit_score": {
+          "ok": true,
+          "delta": 0,
+          "actual": 760,
+          "expected": 760
+        },
+        "net_monthly_income": {
+          "ok": true,
+          "delta": -0.5,
+          "actual": 108967.5,
+          "expected": 108968.0
+        },
+        "foir_pct": {
+          "ok": true,
+          "delta": 0.048949367176163605,
+          "actual": 19.148949367176165,
+          "expected": 19.1
+        },
+        "payment_returns_count": {
+          "ok": true,
+          "delta": 0,
+          "actual": 0,
+          "expected": 0
+        },
+        "avg_bank_balance": {
+          "ok": true,
+          "delta": 0.33333333333393966,
+          "actual": 11093.333333333334,
+          "expected": 11093.0
+        },
+        "vintage_months": {
+          "ok": true,
+          "delta": 0,
+          "actual": 40,
+          "expected": 40
+        }
+      },
+      "memo_score": 1.0,
+      "memo_failed_checks": [],
+      "excel_score": 1.0,
+      "excel_failed_checks": [],
+      "tokens": 0,
+      "cost_usd": 0.0,
+      "duration_s": 0.1181405059996905
+    },
+    {
+      "app_id": "APP-015",
+      "skipped": false,
+      "confidence": "reviewed",
+      "decision_correct": true,
+      "actual_decision": "refer",
+      "expected_decision": "refer",
+      "metrics": {
+        "credit_score": {
+          "ok": true,
+          "delta": 0,
+          "actual": 770,
+          "expected": 770
+        },
+        "net_monthly_income": {
+          "ok": true,
+          "delta": 0.0,
+          "actual": 90000.0,
+          "expected": 90000.0
+        },
+        "foir_pct": {
+          "ok": true,
+          "delta": 0.036987697119611695,
+          "actual": 15.836987697119612,
+          "expected": 15.8
+        },
+        "payment_returns_count": {
+          "ok": true,
+          "delta": 0,
+          "actual": 0,
+          "expected": 0
+        },
+        "avg_bank_balance": {
+          "ok": true,
+          "delta": -0.5,
+          "actual": 15379.5,
+          "expected": 15380.0
+        },
+        "vintage_months": {
+          "ok": true,
+          "delta": 0,
+          "actual": 30,
+          "expected": 30
+        }
+      },
+      "memo_score": 1.0,
+      "memo_failed_checks": [],
+      "excel_score": 1.0,
+      "excel_failed_checks": [],
+      "tokens": 0,
+      "cost_usd": 0.0,
+      "duration_s": 0.11861422599940852
+    }
+  ]
+}

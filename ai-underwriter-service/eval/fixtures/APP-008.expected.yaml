@@ -1,0 +1,25 @@
+app_id: APP-008
+confidence: reviewed
+notes: derived by scripts/derive_ground_truth.py
+expected_decision: refer
+expected_fired_rule_ids:
+- R3_PAYMENT_RETURNS
+expected_metrics:
+  credit_score:
+    value: 730
+    tolerance_abs: 0
+  net_monthly_income:
+    value: 80000.0
+    tolerance_pct: 2
+  foir_pct:
+    value: 20.3
+    tolerance_abs: 1.5
+  payment_returns_count:
+    value: 2
+    tolerance_abs: 0
+  avg_bank_balance:
+    value: 15380.0
+    tolerance_pct: 5
+  vintage_months:
+    value: 36
+    tolerance_abs: 0

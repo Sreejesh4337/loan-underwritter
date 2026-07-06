@@ -1,0 +1,282 @@
+{
+  "application_id": "APP-013",
+  "run_id": "eval-20260703T094439Z",
+  "thread_id": "APP-013:eval-20260703T094439Z",
+  "applicant": {
+    "applicant_id": "APP-013",
+    "full_name": "Nisha Pillai",
+    "date_of_birth": "1990-03-14",
+    "pan_masked": "NISPP****K",
+    "mobile_masked": "+91-98XXX-XX131",
+    "employment_type": "salaried",
+    "employer_or_business": "Acme Tech Pvt Ltd",
+    "address": "Flat 13, MG Road, Bengaluru 560001",
+    "city": "Bengaluru",
+    "state": "Karnataka"
+  },
+  "loan_request": {
+    "product": "Unsecured Personal Loan",
+    "requested_amount": 800000.0,
+    "tenor_months": 48,
+    "indicative_rate_pct": 13.0
+  },
+  "credit_bureau": {
+    "credit_score": 685,
+    "active_loans": 1,
+    "delinquencies_12m": 0,
+    "enquiries_6m": 2
+  },
+  "metrics": {
+    "net_monthly_income": 250000.0,
+    "net_monthly_income_source": "income_sheet",
+    "existing_emis": 10000.0,
+    "proposed_emi": 21461.99671501204,
+    "foir_pct": 12.584798686004817,
+    "avg_bank_balance": 42924.333333333336,
+    "payment_returns_count": 0,
+    "salary_credit_months_count": 6,
+    "vintage_months": 60,
+    "unexplained_cash_deposit_flag": false
+  },
+  "transactions": [
+    {
+      "txn_date": "2025-07-05",
+      "description": "Salary Credit - EMP PAYROLL",
+      "debit": 0.0,
+      "credit": 250000.0,
+      "balance": 269441.0,
+      "category": "salary"
+    },
+    {
+      "txn_date": "2025-07-07",
+      "description": "ACH Debit - EXISTING LOAN EMI",
+      "debit": 10000.0,
+      "credit": 0.0,
+      "balance": 259441.0,
+      "category": "emi"
+    },
+    {
+      "txn_date": "2025-07-15",
+      "description": "UPI - UTILITIES & BILLS",
+      "debit": 1571.0,
+      "credit": 0.0,
+      "balance": 257870.0,
+      "category": "other"
+    },
+    {
+      "txn_date": "2025-07-25",
+      "description": "POS / UPI - HOUSEHOLD SPENDS",
+      "debit": 230941.0,
+      "credit": 0.0,
+      "balance": 26929.0,
+      "category": "other"
+    },
+    {
+      "txn_date": "2025-08-05",
+      "description": "Salary Credit - EMP PAYROLL",
+      "debit": 0.0,
+      "credit": 250000.0,
+      "balance": 276929.0,
+      "category": "salary"
+    },
+    {
+      "txn_date": "2025-08-07",
+      "description": "ACH Debit - EXISTING LOAN EMI",
+      "debit": 10000.0,
+      "credit": 0.0,
+      "balance": 266929.0,
+      "category": "emi"
+    },
+    {
+      "txn_date": "2025-08-15",
+      "description": "UPI - UTILITIES & BILLS",
+      "debit": 1837.0,
+      "credit": 0.0,
+      "balance": 265092.0,
+      "category": "other"
+    },
+    {
+      "txn_date": "2025-08-25",
+      "description": "POS / UPI - HOUSEHOLD SPENDS",
+      "debit": 233202.0,
+      "credit": 0.0,
+      "balance": 31890.0,
+      "category": "other"
+    },
+    {
+      "txn_date": "2025-09-05",
+      "description": "Salary Credit - EMP PAYROLL",
+      "debit": 0.0,
+      "credit": 250000.0,
+      "balance": 281890.0,
+      "category": "salary"
+    },
+    {
+      "txn_date": "2025-09-07",
+      "description": "ACH Debit - EXISTING LOAN EMI",
+      "debit": 10000.0,
+      "credit": 0.0,
+      "balance": 271890.0,
+      "category": "emi"
+    },
+    {
+      "txn_date": "2025-09-15",
+      "description": "UPI - UTILITIES & BILLS",
+      "debit": 2540.0,
+      "credit": 0.0,
+      "balance": 269350.0,
+      "category": "other"
+    },
+    {
+      "txn_date": "2025-09-25",
+      "description": "POS / UPI - HOUSEHOLD SPENDS",
+      "debit": 228492.0,
+      "credit": 0.0,
+      "balance": 40858.0,
+      "category": "other"
+    },
+    {
+      "txn_date": "2025-10-05",
+      "description": "Salary Credit - EMP PAYROLL",
+      "debit": 0.0,
+      "credit": 250000.0,
+      "balance": 290858.0,
+      "category": "salary"
+    },
+    {
+      "txn_date": "2025-10-07",
+      "description": "ACH Debit - EXISTING LOAN EMI",
+      "debit": 10000.0,
+      "credit": 0.0,
+      "balance": 280858.0,
+      "category": "emi"
+    },
+    {
+      "txn_date": "2025-10-15",
+      "description": "UPI - UTILITIES & BILLS",
+      "debit": 1978.0,
+      "credit": 0.0,
+      "balance": 278880.0,
+      "category": "other"
+    },
+    {
+      "txn_date": "2025-10-25",
+      "description": "POS / UPI - HOUSEHOLD SPENDS",
+      "debit": 230993.0,
+      "credit": 0.0,
+      "balance": 47887.0,
+      "category": "other"
+    },
+    {
+      "txn_date": "2025-11-05",
+      "description": "Salary Credit - EMP PAYROLL",
+      "debit": 0.0,
+      "credit": 250000.0,
+      "balance": 297887.0,
+      "category": "salary"
+    },
+    {
+      "txn_date": "2025-11-07",
+      "description": "ACH Debit - EXISTING LOAN EMI",
+      "debit": 10000.0,
+      "credit": 0.0,
+      "balance": 287887.0,
+      "category": "emi"
+    },
+    {
+      "txn_date": "2025-11-15",
+      "description": "UPI - UTILITIES & BILLS",
+      "debit": 1417.0,
+      "credit": 0.0,
+      "balance": 286470.0,
+      "category": "other"
+    },
+    {
+      "txn_date": "2025-11-25",
+      "description": "POS / UPI - HOUSEHOLD SPENDS",
+      "debit": 234506.0,
+      "credit": 0.0,
+      "balance": 51964.0,
+      "category": "other"
+    },
+    {
+      "txn_date": "2025-12-05",
+      "description": "Salary Credit - EMP PAYROLL",
+      "debit": 0.0,
+      "credit": 250000.0,
+      "balance": 301964.0,
+      "category": "salary"
+    },
+    {
+      "txn_date": "2025-12-07",
+      "description": "ACH Debit - EXISTING LOAN EMI",
+      "debit": 10000.0,
+      "credit": 0.0,
+      "balance": 291964.0,
+      "category": "emi"
+    },
+    {
+      "txn_date": "2025-12-15",
+      "description": "UPI - UTILITIES & BILLS",
+      "debit": 2556.0,
+      "credit": 0.0,
+      "balance": 289408.0,
+      "category": "other"
+    },
+    {
+      "txn_date": "2025-12-25",
+      "description": "POS / UPI - HOUSEHOLD SPENDS",
+      "debit": 231390.0,
+      "credit": 0.0,
+      "balance": 58018.0,
+      "category": "other"
+    }
+  ],
+  "decision": "approve",
+  "fired_rules": [
+    {
+      "rule_id": "R1_CREDIT_SCORE",
+      "tier": "override",
+      "message": "Credit score of 685 is in the refer band (650-699), but the high-income override applies (net monthly income, FOIR, score, and zero payment returns all meet the override's own thresholds), so this rule does not fire.",
+      "fired": false
+    }
+  ],
+  "rationale_text": "No decline or refer rules fired against the lending policy; recommendation is APPROVE.",
+  "advisory_notes": [],
+  "generated_at": "2026-07-03T09:44:41.129332Z",
+  "usage": {
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "total_cost_usd": 0.0,
+    "per_step": [
+      {
+        "step": "extract_bank_statement",
+        "model": "deterministic-fallback",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": 0.0
+      },
+      {
+        "step": "extract_income",
+        "model": "deterministic-fallback",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": 0.0
+      },
+      {
+        "step": "extract_kyc",
+        "model": "deterministic-fallback",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": 0.0
+      },
+      {
+        "step": "decide",
+        "model": "deterministic-fallback",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": 0.0
+      }
+    ]
+  }
+}

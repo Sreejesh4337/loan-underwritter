@@ -1,0 +1,227 @@
+{
+  "application_id": "APP-003",
+  "run_id": "eval-20260703T094439Z",
+  "thread_id": "APP-003:eval-20260703T094439Z",
+  "applicant": {
+    "applicant_id": "APP-003",
+    "full_name": "Arjun Nair",
+    "date_of_birth": "1990-03-14",
+    "pan_masked": "ARJPN****K",
+    "mobile_masked": "+91-98XXX-XX031",
+    "employment_type": "salaried",
+    "employer_or_business": "Acme Tech Pvt Ltd",
+    "address": "Flat 03, MG Road, Bengaluru 560001",
+    "city": "Bengaluru",
+    "state": "Karnataka"
+  },
+  "loan_request": {
+    "product": "Unsecured Personal Loan",
+    "requested_amount": 800000.0,
+    "tenor_months": 48,
+    "indicative_rate_pct": 13.0
+  },
+  "credit_bureau": {
+    "credit_score": 810,
+    "active_loans": 0,
+    "delinquencies_12m": 0,
+    "enquiries_6m": 2
+  },
+  "metrics": {
+    "net_monthly_income": 150000.0,
+    "net_monthly_income_source": "income_sheet",
+    "existing_emis": 0.0,
+    "proposed_emi": 21461.99671501204,
+    "foir_pct": 14.307997810008027,
+    "avg_bank_balance": 38631.166666666664,
+    "payment_returns_count": 0,
+    "salary_credit_months_count": 6,
+    "vintage_months": 60,
+    "unexplained_cash_deposit_flag": false
+  },
+  "transactions": [
+    {
+      "txn_date": "2025-07-05",
+      "description": "Salary Credit - EMP PAYROLL",
+      "debit": 0.0,
+      "credit": 150000.0,
+      "balance": 171839.0,
+      "category": "salary"
+    },
+    {
+      "txn_date": "2025-07-15",
+      "description": "UPI - UTILITIES & BILLS",
+      "debit": 2361.0,
+      "credit": 0.0,
+      "balance": 169478.0,
+      "category": "other"
+    },
+    {
+      "txn_date": "2025-07-25",
+      "description": "POS / UPI - HOUSEHOLD SPENDS",
+      "debit": 141309.0,
+      "credit": 0.0,
+      "balance": 28169.0,
+      "category": "other"
+    },
+    {
+      "txn_date": "2025-08-05",
+      "description": "Salary Credit - EMP PAYROLL",
+      "debit": 0.0,
+      "credit": 150000.0,
+      "balance": 178169.0,
+      "category": "salary"
+    },
+    {
+      "txn_date": "2025-08-15",
+      "description": "UPI - UTILITIES & BILLS",
+      "debit": 2406.0,
+      "credit": 0.0,
+      "balance": 175763.0,
+      "category": "other"
+    },
+    {
+      "txn_date": "2025-08-25",
+      "description": "POS / UPI - HOUSEHOLD SPENDS",
+      "debit": 141553.0,
+      "credit": 0.0,
+      "balance": 34210.0,
+      "category": "other"
+    },
+    {
+      "txn_date": "2025-09-05",
+      "description": "Salary Credit - EMP PAYROLL",
+      "debit": 0.0,
+      "credit": 150000.0,
+      "balance": 184210.0,
+      "category": "salary"
+    },
+    {
+      "txn_date": "2025-09-15",
+      "description": "UPI - UTILITIES & BILLS",
+      "debit": 2186.0,
+      "credit": 0.0,
+      "balance": 182024.0,
+      "category": "other"
+    },
+    {
+      "txn_date": "2025-09-25",
+      "description": "POS / UPI - HOUSEHOLD SPENDS",
+      "debit": 145493.0,
+      "credit": 0.0,
+      "balance": 36531.0,
+      "category": "other"
+    },
+    {
+      "txn_date": "2025-10-05",
+      "description": "Salary Credit - EMP PAYROLL",
+      "debit": 0.0,
+      "credit": 150000.0,
+      "balance": 186531.0,
+      "category": "salary"
+    },
+    {
+      "txn_date": "2025-10-15",
+      "description": "UPI - UTILITIES & BILLS",
+      "debit": 1519.0,
+      "credit": 0.0,
+      "balance": 185012.0,
+      "category": "other"
+    },
+    {
+      "txn_date": "2025-10-25",
+      "description": "POS / UPI - HOUSEHOLD SPENDS",
+      "debit": 144455.0,
+      "credit": 0.0,
+      "balance": 40557.0,
+      "category": "other"
+    },
+    {
+      "txn_date": "2025-11-05",
+      "description": "Salary Credit - EMP PAYROLL",
+      "debit": 0.0,
+      "credit": 150000.0,
+      "balance": 190557.0,
+      "category": "salary"
+    },
+    {
+      "txn_date": "2025-11-15",
+      "description": "UPI - UTILITIES & BILLS",
+      "debit": 1312.0,
+      "credit": 0.0,
+      "balance": 189245.0,
+      "category": "other"
+    },
+    {
+      "txn_date": "2025-11-25",
+      "description": "POS / UPI - HOUSEHOLD SPENDS",
+      "debit": 145058.0,
+      "credit": 0.0,
+      "balance": 44187.0,
+      "category": "other"
+    },
+    {
+      "txn_date": "2025-12-05",
+      "description": "Salary Credit - EMP PAYROLL",
+      "debit": 0.0,
+      "credit": 150000.0,
+      "balance": 194187.0,
+      "category": "salary"
+    },
+    {
+      "txn_date": "2025-12-15",
+      "description": "UPI - UTILITIES & BILLS",
+      "debit": 1341.0,
+      "credit": 0.0,
+      "balance": 192846.0,
+      "category": "other"
+    },
+    {
+      "txn_date": "2025-12-25",
+      "description": "POS / UPI - HOUSEHOLD SPENDS",
+      "debit": 144713.0,
+      "credit": 0.0,
+      "balance": 48133.0,
+      "category": "other"
+    }
+  ],
+  "decision": "approve",
+  "fired_rules": [],
+  "rationale_text": "No decline or refer rules fired against the lending policy; recommendation is APPROVE.",
+  "advisory_notes": [],
+  "generated_at": "2026-07-03T09:44:39.516639Z",
+  "usage": {
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "total_cost_usd": 0.0,
+    "per_step": [
+      {
+        "step": "extract_bank_statement",
+        "model": "deterministic-fallback",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": 0.0
+      },
+      {
+        "step": "extract_income",
+        "model": "deterministic-fallback",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": 0.0
+      },
+      {
+        "step": "extract_kyc",
+        "model": "deterministic-fallback",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": 0.0
+      },
+      {
+        "step": "decide",
+        "model": "deterministic-fallback",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": 0.0
+      }
+    ]
+  }
+}

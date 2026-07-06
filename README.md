@@ -1,7 +1,11 @@
 1. Backend (FastAPI + LangGraph pipeline)
  
   cd ai-underwriter-service
+
+  
   source .venv/bin/activate      # venv already set up with all deps installed
+
+  
   uvicorn src.api.main:app --reload
  
   This starts the API on http://localhost:8000 (interactive docs at /docs).

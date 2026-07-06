@@ -12,6 +12,10 @@ import json
 import sys
 from datetime import datetime, timezone
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from src.graph.build_graph import DEFAULT_CHECKPOINT_DB, compile_graph
 from src.inputs import resolve_input_paths
 

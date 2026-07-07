@@ -1,1 +1,13 @@
-
+fastapi
+uvicorn
+python-multipart
+python-dotenv
+langgraph
+langchain-openai
+pydantic
+pdfplumber
+openpyxl
+pypdf
+reportlab
+pyyaml
+langgraph-checkpoint-sqlite

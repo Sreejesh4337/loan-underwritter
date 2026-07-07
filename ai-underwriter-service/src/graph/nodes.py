@@ -23,7 +23,7 @@ from src.extractors.income_extractor import extract_income
 from src.extractors.kyc_extractor import extract_kyc
 from src.analysis.categorize import unmatched_descriptions
 from src.graph.state import UnderwritingState, new_step_status
-from src.llm.models import get_strong_model, llm_available
+from src.llm.models import get_strong_model
 from src.llm.pricing import estimate_cost_usd
 from src.parsers.bank_statement_parser import ParsedBankStatement, RawTransactionRow
 from src.parsers.base import ParserError
@@ -91,9 +91,11 @@ def plan_node(state: UnderwritingState) -> dict:
     plan_steps = []
     missing = []
 
+    from src.db import get_document
+
     for doc_type in required:
-        path = state["input_paths"].get(doc_type)
-        if not path or not Path(path).is_file() or Path(path).stat().st_size == 0:
+        content = get_document(state["application_id"], doc_type)
+        if not content:
             missing.append(doc_type)
         plan_steps.append({"node": f"parse[{doc_type}]", "reason": f"read the {doc_type} document into clean text"})
 
@@ -128,28 +130,42 @@ def route_after_plan(state: UnderwritingState) -> str:
 # --------------------------------------------------------------------------
 
 
+import tempfile
+
 def parse_documents_node(state: UnderwritingState) -> dict:
     step_status = _mark_running(state, "parse_documents")
     parsed: dict = {}
     warnings: dict[str, list[str]] = {}
     errors = []
 
+    from src.db import get_document
+
+    def _parse_with_temp(doc_type: str, parse_fn) -> dict:
+        content = get_document(state["application_id"], doc_type)
+        if not content:
+            raise ParserError(f"Document {doc_type} not found in database.")
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf" if doc_type != "income_details" else ".xlsx") as tmp:
+            tmp.write(content)
+            tmp_path = Path(tmp.name)
+        try:
+            return asdict(parse_fn(tmp_path))
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
     try:
-        kyc_doc = parse_kyc(Path(state["input_paths"]["kyc_and_credit"]))
-        parsed["kyc"] = asdict(kyc_doc)
+        parsed["kyc"] = _parse_with_temp("kyc_and_credit", parse_kyc)
     except ParserError as exc:
         errors.append({"node": "parse_documents", "message": f"kyc: {exc}"})
 
     try:
-        income_doc = parse_income(Path(state["input_paths"]["income_details"]))
-        parsed["income"] = asdict(income_doc)
+        parsed["income"] = _parse_with_temp("income_details", parse_income)
     except ParserError as exc:
         errors.append({"node": "parse_documents", "message": f"income: {exc}"})
 
     try:
-        bs_doc = parse_bank_statement(Path(state["input_paths"]["bank_statement"]))
-        parsed["bank_statement"] = asdict(bs_doc)
-        warnings["bank_statement"] = bs_doc.warnings
+        bs_doc_dict = _parse_with_temp("bank_statement", parse_bank_statement)
+        parsed["bank_statement"] = bs_doc_dict
+        warnings["bank_statement"] = bs_doc_dict["warnings"]
     except ParserError as exc:
         errors.append({"node": "parse_documents", "message": f"bank_statement: {exc}"})
 
@@ -332,56 +348,54 @@ def evaluate_policy_node(state: UnderwritingState) -> dict:
 # --------------------------------------------------------------------------
 
 
-def _deterministic_rationale(decision: str, fired_rules: list[dict]) -> str:
-    active = [r for r in fired_rules if r["fired"]]
-    if not active:
-        return f"No decline or refer rules fired against the lending policy; recommendation is {decision.upper()}."
-    reasons = "; ".join(r["message"] for r in active)
-    return f"Recommendation is {decision.upper()} because: {reasons}"
-
-
 def decide_node(state: UnderwritingState) -> dict:
     step_status = _mark_running(state, "decide")
     policy_result = state["policy_result"]
     decision = policy_result["decision"]
     fired_rules = policy_result["fired_rules"]
 
-    usage = StepUsage(step="decide", model="deterministic-fallback")
-    advisory_notes: list[str] = []
-    rationale_text = _deterministic_rationale(decision, fired_rules)
+    model = get_strong_model()
+    prompt = (
+        "You are writing the rationale section of an underwriting memo. The decision "
+        f"has ALREADY been made by a deterministic policy engine: {decision.upper()}. "
+        "Do not propose a different decision. Write 2-4 sentences explaining the "
+        "decision in plain English, citing the rule IDs and figures below, plus up to "
+        "3 short advisory notes (qualitative observations, not new rules).\n\n"
+        f"Metrics: {json.dumps(state['metrics'])}\n"
+        f"Fired rules: {json.dumps(fired_rules)}\n"
+        f"Cross-check: {json.dumps(state['cross_check'])}\n\n"
+        'Respond as JSON: {"rationale_text": "...", "advisory_notes": ["...", ...]}'
+    )
+    response = model.invoke(prompt)
+    usage_meta = getattr(response, "usage_metadata", None) or {}
+    input_tokens = usage_meta.get("input_tokens", 0)
+    output_tokens = usage_meta.get("output_tokens", 0)
 
-    if llm_available():
-        try:
-            model = get_strong_model()
-            prompt = (
-                "You are writing the rationale section of an underwriting memo. The decision "
-                f"has ALREADY been made by a deterministic policy engine: {decision.upper()}. "
-                "Do not propose a different decision. Write 2-4 sentences explaining the "
-                "decision in plain English, citing the rule IDs and figures below, plus up to "
-                "3 short advisory notes (qualitative observations, not new rules).\n\n"
-                f"Metrics: {json.dumps(state['metrics'])}\n"
-                f"Fired rules: {json.dumps(fired_rules)}\n"
-                f"Cross-check: {json.dumps(state['cross_check'])}\n\n"
-                'Respond as JSON: {"rationale_text": "...", "advisory_notes": ["...", ...]}'
-            )
-            response = model.invoke(prompt)
-            usage_meta = getattr(response, "usage_metadata", None) or {}
-            input_tokens = usage_meta.get("input_tokens", 0)
-            output_tokens = usage_meta.get("output_tokens", 0)
-            payload = json.loads(response.content)
-            rationale_text = payload.get("rationale_text", rationale_text)
-            advisory_notes = payload.get("advisory_notes", [])
-            from src.llm.models import STRONG_MODEL_NAME
+    # Safely strip markdown code blocks before JSON parsing
+    content = response.content.strip()
+    if content.startswith("```json"):
+        content = content.split("```json", 1)[1]
+    if content.endswith("```"):
+        content = content.rsplit("```", 1)[0]
+    content = content.strip()
 
-            usage = StepUsage(
-                step="decide",
-                model=STRONG_MODEL_NAME,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cost_usd=estimate_cost_usd(STRONG_MODEL_NAME, input_tokens, output_tokens),
-            )
-        except Exception as exc:
-            logger.warning("LLM decision narrative failed (%s); using the deterministic template", exc)
+    try:
+        payload = json.loads(content)
+    except json.JSONDecodeError as exc:
+        logger.error(f"Failed to parse LLM JSON decision: {exc}. Content was: {content}")
+        payload = {}
+
+    rationale_text = payload.get("rationale_text", f"Recommendation is {decision.upper()}")
+    advisory_notes = payload.get("advisory_notes", [])
+    from src.llm.models import STRONG_MODEL_NAME
+
+    usage = StepUsage(
+        step="decide",
+        model=STRONG_MODEL_NAME,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cost_usd=estimate_cost_usd(STRONG_MODEL_NAME, input_tokens, output_tokens),
+    )
 
     step_status = _mark_done(step_status, "decide")
     return {
@@ -427,26 +441,36 @@ def generate_outputs_node(state: UnderwritingState) -> dict:
     step_status = _mark_running(state, "generate_outputs")
     result = _assemble_result(state)
 
-    out_dir = Path("data/runs") / state["application_id"] / state["run_id"] / "outputs"
-    out_dir.mkdir(parents=True, exist_ok=True)
+    from src.db import save_output
 
     outputs: dict[str, str] = {}
     errors = []
+    
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_memo:
+        tmp_memo_path = Path(tmp_memo.name)
     try:
-        memo_path = generate_underwriting_memo(result, out_dir / "memo.pdf")
-        outputs["memo_pdf"] = str(memo_path)
+        generate_underwriting_memo(result, tmp_memo_path)
+        save_output(state["run_id"], "memo.pdf", tmp_memo_path.read_bytes())
+        outputs["memo_pdf"] = "db://outputs/memo.pdf"
     except Exception as exc:
         errors.append({"node": "generate_outputs", "message": f"memo generation failed: {exc}"})
+    finally:
+        tmp_memo_path.unlink(missing_ok=True)
 
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp_cashflow:
+        tmp_cashflow_path = Path(tmp_cashflow.name)
     try:
-        xlsx_path = generate_cashflow_excel(result, out_dir / "cashflow.xlsx")
-        outputs["cashflow_xlsx"] = str(xlsx_path)
+        generate_cashflow_excel(result, tmp_cashflow_path)
+        save_output(state["run_id"], "cashflow.xlsx", tmp_cashflow_path.read_bytes())
+        outputs["cashflow_xlsx"] = "db://outputs/cashflow.xlsx"
     except Exception as exc:
         errors.append({"node": "generate_outputs", "message": f"cashflow generation failed: {exc}"})
+    finally:
+        tmp_cashflow_path.unlink(missing_ok=True)
 
-    decision_json_path = out_dir / "decision.json"
-    decision_json_path.write_text(result.model_dump_json(indent=2))
-    outputs["decision_json"] = str(decision_json_path)
+    decision_json = result.model_dump_json(indent=2).encode("utf-8")
+    save_output(state["run_id"], "decision.json", decision_json)
+    outputs["decision_json"] = "db://outputs/decision.json"
 
     step_status = _mark_done(step_status, "generate_outputs", error="; ".join(e["message"] for e in errors) or None)
     return {"outputs": outputs, "step_status": step_status, "errors": errors, "updated_at": _now()}

@@ -49,6 +49,7 @@ def parse_income_xlsx(path: Path) -> ParsedIncomeDocument:
         wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
         ws = wb.worksheets[0]
         rows = [list(r) for r in ws.iter_rows(values_only=True)]
+        wb.close()
     except Exception as exc:
         raise ParserError(f"failed to parse income sheet {path}: {exc}") from exc
 

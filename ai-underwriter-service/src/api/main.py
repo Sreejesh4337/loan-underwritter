@@ -117,7 +117,33 @@ async def upload_and_run(
 
 @app.get("/runs", response_model=list[RunStatusResponse])
 def get_all_runs() -> list[RunStatusResponse]:
-    return [RunStatusResponse(**r) for r in list_runs()]
+    runs = []
+    for r in list_runs():
+        applicant_name = None
+        decision = None
+        
+        # Stale run cleanup: Mark runs older than 10 minutes that are still processing as failed.
+        if r.get("status") in ("queued", "running"):
+            try:
+                created_at = datetime.fromisoformat(r["created_at"])
+                if (datetime.now(timezone.utc) - created_at).total_seconds() > 600:
+                    r["status"] = "failed"
+                    r["error"] = "Processing timed out after 10 minutes due to unexpected error or server restart."
+                    append_run(r)
+            except Exception:
+                pass
+
+        if r.get("status") == "completed":
+            content = get_output(r["run_id"], "decision.json")
+            if content:
+                try:
+                    decision_data = json.loads(content.decode("utf-8"))
+                    applicant_name = decision_data.get("applicant", {}).get("full_name")
+                    decision = decision_data.get("decision")
+                except Exception:
+                    pass
+        runs.append(RunStatusResponse(**r, applicant_name=applicant_name, decision=decision))
+    return runs
 
 
 @app.get("/runs/{run_id}", response_model=RunStatusResponse)
@@ -146,6 +172,7 @@ def resume_run(run_id: str, background_tasks: BackgroundTasks) -> RunStatusRespo
     if record is None:
         raise HTTPException(404, f"unknown run_id {run_id!r}")
 
+    record["error"] = None
     append_run({**record, "status": "queued"})
     background_tasks.add_task(_execute, record["application_id"], run_id, record["thread_id"], True)
     return RunStatusResponse(**record, status="queued")

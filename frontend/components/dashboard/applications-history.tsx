@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   getAllRuns,
@@ -12,11 +13,14 @@ import {
 } from "@/lib/api";
 
 export function ApplicationsHistory() {
+  const router = useRouter();
   const [runs, setRuns] = useState<RunStatusResponse[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string>("");
   const [decisionData, setDecisionData] = useState<DecisionResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 8;
 
   useEffect(() => {
     setIsLoading(true);
@@ -44,7 +48,8 @@ export function ApplicationsHistory() {
   const getDecisionLabel = (decision: string) => {
     switch (decision.toLowerCase()) {
       case "approve": return "Approved";
-      case "decline": return "Declined";
+      case "decline":
+      case "reject": return "Rejected";
       case "refer": return "Referred";
       default: return decision;
     }
@@ -53,7 +58,8 @@ export function ApplicationsHistory() {
   const getDecisionColor = (decision: string) => {
     switch (decision.toLowerCase()) {
       case "approve": return "text-emerald-accent";
-      case "decline": return "text-red-500";
+      case "decline":
+      case "reject": return "text-red-500";
       case "refer": return "text-amber-500";
       default: return "text-ds-primary";
     }
@@ -66,6 +72,9 @@ export function ApplicationsHistory() {
       </div>
     );
   }
+
+  const totalPages = Math.max(1, Math.ceil(runs.length / itemsPerPage));
+  const paginatedRuns = runs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   return (
     <div className="space-y-6">
@@ -84,41 +93,87 @@ export function ApplicationsHistory() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-outline-variant">
-                    <th className="py-3 px-4 text-xs font-mono text-on-surface-variant font-medium">Application ID</th>
+                    <th className="py-3 px-4 text-xs font-mono text-on-surface-variant font-medium">Processing ID</th>
                     <th className="py-3 px-4 text-xs font-mono text-on-surface-variant font-medium">Date</th>
-                    <th className="py-3 px-4 text-xs font-mono text-on-surface-variant font-medium">Status</th>
+                    <th className="py-3 px-4 text-xs font-mono text-on-surface-variant font-medium">Applicant</th>
+                    <th className="py-3 px-4 text-xs font-mono text-on-surface-variant font-medium">Loan Decision</th>
                     <th className="py-3 px-4 text-xs font-mono text-on-surface-variant font-medium">Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {runs.map((r) => (
+                  {paginatedRuns.map((r) => (
                     <tr key={r.run_id} className="border-b border-outline-variant last:border-0 hover:bg-surface-container-low transition-colors">
                       <td className="py-3 px-4 text-sm font-medium">{r.application_id}</td>
                       <td className="py-3 px-4 text-sm text-on-surface-variant">{new Date(r.created_at).toLocaleString()}</td>
+                      <td className="py-3 px-4 text-sm font-medium">{r.applicant_name || "-"}</td>
                       <td className="py-3 px-4">
-                        <span className={`text-xs px-2 py-1 rounded-full ${
-                          r.status === "completed" ? "bg-emerald-100 text-emerald-800" :
-                          r.status === "failed" ? "bg-red-100 text-red-800" :
-                          "bg-amber-100 text-amber-800"
-                        }`}>
-                          {r.status}
-                        </span>
+                        {r.status === "failed" || r.error ? (
+                          <span className="text-red-500 text-xs font-semibold">Failed</span>
+                        ) : r.status !== "completed" ? (
+                          <span className="text-blue-500 text-xs font-semibold">Processing...</span>
+                        ) : r.decision ? (
+                          <span className={`text-xs font-semibold ${getDecisionColor(r.decision)}`}>
+                            {getDecisionLabel(r.decision)}
+                          </span>
+                        ) : (
+                          <span className="text-gray-500 text-xs font-semibold">Unknown</span>
+                        )}
                       </td>
                       <td className="py-3 px-4">
-                        <Button 
-                          variant="outline"
-                          size="sm"
-                          disabled={r.status !== "completed"}
-                          onClick={() => { setSelectedRunId(r.run_id); handleViewRun(r.run_id); }}
-                          className="text-xs py-1 h-auto bg-surface-container-high"
-                        >
-                          View Result
-                        </Button>
+                        {r.status === "failed" || r.error ? (
+                          <Button 
+                            variant="outline"
+                            size="sm"
+                            onClick={() => router.push("/")}
+                            className="text-xs py-1 h-auto bg-surface-container-high"
+                          >
+                            Retry
+                          </Button>
+                        ) : (
+                          <Button 
+                            variant="outline"
+                            size="sm"
+                            disabled={r.status !== "completed"}
+                            onClick={() => { setSelectedRunId(r.run_id); handleViewRun(r.run_id); }}
+                            className="text-xs py-1 h-auto bg-surface-container-high"
+                          >
+                            View Result
+                          </Button>
+                        )}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Pagination Controls */}
+          {runs.length > 0 && totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4 border-t border-outline-variant pt-4 px-2">
+              <p className="text-xs text-on-surface-variant">
+                Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, runs.length)} of {runs.length} entries
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="text-xs"
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  className="text-xs"
+                >
+                  Next
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -133,7 +188,12 @@ export function ApplicationsHistory() {
                 Back
              </Button>
              <h3 className="text-lg font-semibold leading-6 flex-1">Recommendation ({decisionData.application_id})</h3>
-             <span className={`bg-ds-secondary-container text-on-ds-secondary-container text-xs font-mono font-medium px-3 py-1 rounded-full flex items-center gap-1 tracking-[0.02em]`}>
+             <span className={`text-xs font-mono font-medium px-3 py-1 rounded-full flex items-center gap-1 tracking-[0.02em] ${
+                decisionData.decision.toLowerCase() === "approve" ? "bg-emerald-100 text-emerald-800" :
+                (decisionData.decision.toLowerCase() === "decline" || decisionData.decision.toLowerCase() === "reject") ? "bg-red-100 text-red-800" :
+                decisionData.decision.toLowerCase() === "refer" ? "bg-amber-100 text-amber-800" :
+                "bg-ds-secondary-container text-on-ds-secondary-container"
+             }`}>
               <span className="material-symbols-outlined text-[14px]" style={{ fontVariationSettings: "'FILL' 1" }}>
                 {decisionData.decision.toLowerCase() === "approve" ? "check_circle" : decisionData.decision.toLowerCase() === "decline" ? "cancel" : "info"}
               </span>

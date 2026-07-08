@@ -25,6 +25,8 @@ export interface RunStatusResponse {
   error: string | null;
   created_at: string;
   updated_at: string | null;
+  applicant_name?: string | null;
+  decision?: string | null;
 }
 
 export interface DecisionResponse {
@@ -92,6 +94,17 @@ export async function getRunStatus(runId: string): Promise<RunStatusResponse> {
   const res = await fetch(`${API_BASE}/runs/${runId}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch run status (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * Resume a failed run.
+ */
+export async function resumeRun(runId: string): Promise<RunStatusResponse> {
+  const res = await fetch(`${API_BASE}/runs/${runId}/resume`, { method: "POST" });
+  if (!res.ok) {
+    throw new Error(`Failed to resume run (${res.status})`);
   }
   return res.json();
 }

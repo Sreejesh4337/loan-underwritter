@@ -24,6 +24,8 @@ class RunStatusResponse(BaseModel):
     error: str | None = None
     created_at: str
     updated_at: str | None = None
+    applicant_name: str | None = None
+    decision: str | None = None
 
 
 class UploadResponse(BaseModel):

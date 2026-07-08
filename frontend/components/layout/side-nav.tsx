@@ -22,10 +22,10 @@ export function SideNav() {
         </div>
         <div>
           <h1 className="text-lg font-black text-on-surface leading-tight">
-            Capital Risk Ops
+            AI Underwriter
           </h1>
           <p className="text-[10px] font-mono font-medium text-on-surface-variant leading-[14px]">
-            Enterprise Tier
+            Loan Analysis System
           </p>
         </div>
       </div>

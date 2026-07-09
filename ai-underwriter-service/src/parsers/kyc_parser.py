@@ -19,6 +19,7 @@ when no LLM is configured (see src/extractors/kyc_extractor.py).
 
 from __future__ import annotations
 
+import io
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -48,6 +49,27 @@ KNOWN_LABELS = (
 )
 _COLUMN_SPLIT_X = 200.0  # left column x0 ~68, right column x0 ~297.6 (confirmed fixed across all sample apps)
 _ROW_CLUSTER_TOLERANCE = 3.0
+
+# Threshold for the upload-time "does this look like a KYC doc" sniff check
+# (out of len(KNOWN_LABELS) == 16). KYC uses a fraction-matched threshold
+# rather than an exact structural marker (unlike bank statement/income)
+# because page-1 text extraction can partially succeed on odd inputs.
+KYC_SNIFF_MIN_LABEL_MATCHES = 6
+
+
+def sniff_kyc(content: bytes) -> int:
+    """Return how many KNOWN_LABELS appear verbatim in the first page's raw
+    text. Cheap presence check for upload-time document-type validation — no
+    column-splitting, no full parse. Never raises; returns 0 for unreadable
+    or non-PDF bytes."""
+    try:
+        with pdfplumber.open(io.BytesIO(content)) as pdf:
+            if not pdf.pages:
+                return 0
+            text = pdf.pages[0].extract_text() or ""
+    except Exception:
+        return 0
+    return sum(1 for label in KNOWN_LABELS if label in text)
 
 
 @dataclass

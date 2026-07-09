@@ -86,6 +86,25 @@ def _decline_rules(metrics: FinancialMetrics, credit_score: int, policy: dict[st
                 ),
             )
         )
+    if metrics.name_mismatch_flag:
+        fired.append(
+            FiredRule(
+                rule_id="D5_NAME_MISMATCH",
+                tier=RuleTier.DECLINE,
+                message="Applicant name does not match consistently across the KYC, income, and bank statement documents.",
+            )
+        )
+    if metrics.income_mismatch_flag:
+        fired.append(
+            FiredRule(
+                rule_id="D6_INCOME_MISMATCH",
+                tier=RuleTier.DECLINE,
+                message=(
+                    "Declared income sheet salary does not match the bank statement's salary credits "
+                    f"within {t['income_consistency']['tolerance_pct']:.0f}% tolerance."
+                ),
+            )
+        )
     return fired
 
 

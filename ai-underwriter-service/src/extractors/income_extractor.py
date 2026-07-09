@@ -1,23 +1,16 @@
 """Income document extraction.
 
-Handles both confirmed income-sheet layouts (salaried monthly-payslip table;
-self-employed business Item/Value table). The self-employed applicant's
-authoritative net monthly income is NOT taken from this sheet's own declared
-"Avg monthly bank credits" figure — per the lending policy, that figure is
-independently computed from the bank statement itself
-(src/analysis/metrics.average_monthly_bank_credits). This extractor only
-recovers applicant identity, employment type, and vintage, plus the salaried
-average net pay (which the policy *does* source from this sheet).
+Uses a cheap-model (gpt-4o-mini) structured-output extraction over the
+income sheet data. Requires OPENAI_API_KEY to be set in .env.
 """
 
 from __future__ import annotations
 
 import logging
-import re
 
 from pydantic import BaseModel, Field
 
-from src.llm.models import CHEAP_MODEL_NAME, get_cheap_model, llm_available
+from src.llm.models import CHEAP_MODEL_NAME, get_cheap_model
 from src.llm.pricing import estimate_cost_usd
 from src.parsers.income_parser import ParsedIncomeDocument
 from src.schemas.underwriting import EmploymentType, StepUsage
@@ -52,28 +45,7 @@ def _render_for_llm(parsed: ParsedIncomeDocument) -> str:
     return "\n".join(lines)
 
 
-def _vintage_from_header(header_fields: dict[str, str]) -> int:
-    raw = header_fields.get("Months at current job") or header_fields.get("Months in business")
-    if raw is None:
-        raise ValueError("income sheet header is missing a vintage field")
-    return int(re.sub(r"[^\d]", "", raw))
-
-
-def _extract_deterministic(parsed: ParsedIncomeDocument) -> IncomeExtraction:
-    h = parsed.header_fields
-    employment_type = (
-        EmploymentType.SALARIED if h.get("Employment type", "").strip().lower() == "salaried" else EmploymentType.SELF_EMPLOYED
-    )
-    return IncomeExtraction(
-        applicant_name=h["Applicant"],
-        employment_type=employment_type,
-        employer_or_business=h.get("Employer") or h.get("Business name") or "",
-        vintage_months=_vintage_from_header(h),
-        average_net_pay=parsed.average_net_pay,
-    )
-
-
-def _extract_llm(parsed: ParsedIncomeDocument) -> tuple[IncomeExtraction, StepUsage]:
+def extract_income(parsed: ParsedIncomeDocument) -> tuple[IncomeExtraction, StepUsage]:
     model = get_cheap_model().with_structured_output(_IncomeExtractionSchema, include_raw=True)
     prompt = (
         "Extract the applicant's employment details from this income sheet. "
@@ -88,7 +60,7 @@ def _extract_llm(parsed: ParsedIncomeDocument) -> tuple[IncomeExtraction, StepUs
 
     income = IncomeExtraction(
         applicant_name=extraction.applicant_name,
-        employment_type=EmploymentType(extraction.employment_type),
+        employment_type=EmploymentType(extraction.employment_type.lower()),
         employer_or_business=extraction.employer_or_business,
         vintage_months=extraction.vintage_months,
         average_net_pay=extraction.average_net_pay,
@@ -101,13 +73,3 @@ def _extract_llm(parsed: ParsedIncomeDocument) -> tuple[IncomeExtraction, StepUs
         cost_usd=estimate_cost_usd(CHEAP_MODEL_NAME, input_tokens, output_tokens),
     )
     return income, usage
-
-
-def extract_income(parsed: ParsedIncomeDocument) -> tuple[IncomeExtraction, StepUsage]:
-    if llm_available():
-        try:
-            return _extract_llm(parsed)
-        except Exception as exc:
-            logger.warning("LLM income extraction failed (%s); falling back to deterministic parsing", exc)
-
-    return _extract_deterministic(parsed), StepUsage(step="extract_income", model="deterministic-fallback")

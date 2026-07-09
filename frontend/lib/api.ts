@@ -7,6 +7,21 @@ export interface UploadResponse {
   status: string;
 }
 
+/**
+ * Thrown when the backend rejects an upload because a document doesn't
+ * match the expected type for its slot. `fieldErrors` is keyed by the
+ * backend's form field names: "bank_statement" | "kyc_and_credit" | "income_details".
+ */
+export class DocumentValidationError extends Error {
+  fieldErrors: Record<string, string>;
+
+  constructor(message: string, fieldErrors: Record<string, string>) {
+    super(message);
+    this.name = "DocumentValidationError";
+    this.fieldErrors = fieldErrors;
+  }
+}
+
 export interface StepStatusEntry {
   status: string; // "pending" | "running" | "done" | "failed"
   attempt_count: number;
@@ -80,8 +95,23 @@ export async function uploadAndRun(files: {
   });
 
   if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`Upload failed (${res.status}): ${errorText}`);
+    const bodyText = await res.text();
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(bodyText);
+    } catch {
+      // not JSON — fall through to the generic error below
+    }
+
+    const detail = parsed?.detail;
+    if (res.status === 422 && detail && typeof detail === "object" && detail.errors) {
+      throw new DocumentValidationError(
+        detail.message || "Document validation failed.",
+        detail.errors
+      );
+    }
+
+    throw new Error(`Upload failed (${res.status}): ${bodyText}`);
   }
 
   return res.json();

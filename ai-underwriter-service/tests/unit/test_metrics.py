@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from src.analysis.categorize import categorize_transaction, unmatched_descriptions
-from src.analysis.cross_check import cross_check
+from src.analysis.cross_check import check_salary_consistency, cross_check
 from src.analysis.metrics import (
     average_month_end_balance,
     average_monthly_bank_credits,
@@ -24,7 +24,22 @@ from src.analysis.metrics import (
 from src.parsers.bank_statement_parser import parse_bank_statement_pdf
 from src.parsers.income_parser import parse_income_xlsx
 from src.parsers.kyc_parser import parse_kyc_pdf
-from src.schemas.underwriting import EmploymentType, TransactionCategory
+from src.schemas.underwriting import EmploymentType, Transaction, TransactionCategory
+
+MONTHLY_TABLE_HEADER = ["Month", "Basic", "HRA", "Allowances", "Deductions", "Net pay (INR)"]
+
+
+def _salary_txn(month_label: str, amount: float) -> Transaction:
+    from datetime import datetime
+
+    txn_date = datetime.strptime(f"05 {month_label}", "%d %b %Y").date()
+    return Transaction(
+        txn_date=txn_date,
+        description="Salary Credit - EMP PAYROLL",
+        credit=amount,
+        balance=amount,
+        category=TransactionCategory.SALARY,
+    )
 
 APPS_DIR = Path(__file__).resolve().parents[2].parent / "docs" / "applications"
 
@@ -143,6 +158,76 @@ class TestCrossCheck:
         )
         assert result.name_consistency_ok is False
         assert result.warnings
+
+
+class TestSalaryConsistency:
+    def test_matching_months_and_amounts_ok(self):
+        txns = [_salary_txn("Oct 2025", 150000), _salary_txn("Nov 2025", 150000), _salary_txn("Dec 2025", 150000)]
+        monthly_rows = [["Oct 2025", 0, 0, 0, 0, 150000], ["Nov 2025", 0, 0, 0, 0, 150000], ["Dec 2025", 0, 0, 0, 0, 150000]]
+        ok, warnings = check_salary_consistency(
+            monthly_table_header=MONTHLY_TABLE_HEADER, monthly_rows=monthly_rows, transactions=txns
+        )
+        assert ok is True
+        assert warnings == []
+
+    def test_within_tolerance_is_ok(self):
+        txns = [_salary_txn("Oct 2025", 145000)]  # ~3.3% below declared
+        monthly_rows = [["Oct 2025", 0, 0, 0, 0, 150000]]
+        ok, warnings = check_salary_consistency(
+            monthly_table_header=MONTHLY_TABLE_HEADER, monthly_rows=monthly_rows, transactions=txns
+        )
+        assert ok is True
+        assert warnings == []
+
+    def test_missing_month_flagged(self):
+        txns = [_salary_txn("Nov 2025", 150000)]
+        monthly_rows = [["Oct 2025", 0, 0, 0, 0, 150000]]
+        ok, warnings = check_salary_consistency(
+            monthly_table_header=MONTHLY_TABLE_HEADER, monthly_rows=monthly_rows, transactions=txns
+        )
+        assert ok is False
+        assert warnings
+
+    def test_amount_beyond_tolerance_flagged(self):
+        txns = [_salary_txn("Oct 2025", 100000)]  # >10% below declared
+        monthly_rows = [["Oct 2025", 0, 0, 0, 0, 150000]]
+        ok, warnings = check_salary_consistency(
+            monthly_table_header=MONTHLY_TABLE_HEADER, monthly_rows=monthly_rows, transactions=txns
+        )
+        assert ok is False
+        assert warnings
+
+    def test_no_monthly_rows_is_noop(self):
+        ok, warnings = check_salary_consistency(monthly_table_header=[], monthly_rows=[], transactions=[])
+        assert ok is True
+        assert warnings == []
+
+    def test_cross_check_flags_income_mismatch_for_salaried(self, app001_transactions):
+        result = cross_check(
+            employment_type=EmploymentType.SALARIED,
+            kyc_full_name="Rahul Mehta",
+            income_sheet_applicant_name="Rahul Mehta",
+            bank_account_holder_name="Rahul Mehta",
+            income_sheet_average_net_pay=120000.0,
+            transactions=app001_transactions,
+            monthly_table_header=MONTHLY_TABLE_HEADER,
+            monthly_rows=[["Jul 2025", 0, 0, 0, 0, 999999]],  # doesn't match actual 150,000 credit
+        )
+        assert result.income_consistency_ok is False
+        assert result.warnings
+
+    def test_cross_check_skips_check_for_self_employed(self, app001_transactions):
+        result = cross_check(
+            employment_type=EmploymentType.SELF_EMPLOYED,
+            kyc_full_name="Rahul Mehta",
+            income_sheet_applicant_name="Rahul Mehta",
+            bank_account_holder_name="Rahul Mehta",
+            income_sheet_average_net_pay=None,
+            transactions=app001_transactions,
+            monthly_table_header=[],
+            monthly_rows=[],
+        )
+        assert result.income_consistency_ok is True
 
 
 class TestComputeMetricsEndToEnd:

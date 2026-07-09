@@ -8,6 +8,7 @@ import {
   getDecision,
   getMemoUrl,
   getCashflowUrl,
+  DocumentValidationError,
   type DecisionResponse,
   type RunStatusResponse,
 } from "@/lib/api";
@@ -57,6 +58,13 @@ const PIPELINE_STEP_MAP: Record<string, number> = {
   done: 3,
 };
 
+// Maps the backend's multipart form field names to this component's upload slots.
+const API_FIELD_TO_UPLOAD_ID: Record<string, UploadId> = {
+  bank_statement: "bank",
+  kyc_and_credit: "kyc",
+  income_details: "income",
+};
+
 const sseSteps = [
   "Reading documents & extracting data",
   "Pulling live credit bureau data",
@@ -98,6 +106,9 @@ export function ApplicationAnalysis({
     null
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<
+    Partial<Record<UploadId, string>>
+  >({});
 
   // Polling ref
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -110,6 +121,10 @@ export function ApplicationAnalysis({
     setUploadedFiles((prev) => ({
       ...prev,
       [id]: file,
+    }));
+    setFieldErrors((prev) => ({
+      ...prev,
+      [id]: undefined,
     }));
   }, []);
 
@@ -224,10 +239,27 @@ export function ApplicationAnalysis({
         setRunId(response.run_id);
         startPolling(response.run_id);
       } catch (err) {
-        setErrorMessage(
-          err instanceof Error ? err.message : "Upload failed"
-        );
-        setCurrentStep("error");
+        if (err instanceof DocumentValidationError) {
+          const mapped: Partial<Record<UploadId, string>> = {};
+          const cleared: Partial<Record<UploadId, File | null>> = {};
+          for (const [field, message] of Object.entries(err.fieldErrors)) {
+            const uploadId = API_FIELD_TO_UPLOAD_ID[field];
+            if (uploadId) {
+              mapped[uploadId] = message;
+              cleared[uploadId] = null;
+            }
+          }
+          setFieldErrors(mapped);
+          setUploadedFiles((prev) => ({ ...prev, ...cleared }));
+          setCurrentStep("upload");
+          onStepChange?.("upload");
+          onPipelineChange?.({ analysis: "pending", decision: "pending" });
+        } else {
+          setErrorMessage(
+            err instanceof Error ? err.message : "Upload failed"
+          );
+          setCurrentStep("error");
+        }
       }
     }, 400);
   }, [uploadedFiles, onStepChange, onPipelineChange, startPolling]);
@@ -290,13 +322,16 @@ export function ApplicationAnalysis({
                 {uploadZones.map((zone) => {
                   const uploadedFile = uploadedFiles[zone.id];
                   const isUploaded = uploadedFile !== null;
+                  const zoneError = fieldErrors[zone.id];
                   return (
                     <label
                       key={zone.id}
                       className={`upload-zone border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all ${
-                        isUploaded
-                          ? "border-emerald-accent bg-surface-bright"
-                          : "border-outline-variant hover:bg-surface-container-low"
+                        zoneError
+                          ? "border-red-400 bg-red-50"
+                          : isUploaded
+                            ? "border-emerald-accent bg-surface-bright"
+                            : "border-outline-variant hover:bg-surface-container-low"
                       }`}
                     >
                       <input
@@ -312,16 +347,26 @@ export function ApplicationAnalysis({
                           }
                         }}
                       />
-                      <span className="material-symbols-outlined text-[32px] text-ds-primary mb-2 block">
-                        {isUploaded ? "check_circle" : zone.icon}
+                      <span
+                        className={`material-symbols-outlined text-[32px] mb-2 block ${
+                          zoneError ? "text-red-500" : "text-ds-primary"
+                        }`}
+                      >
+                        {zoneError ? "error" : isUploaded ? "check_circle" : zone.icon}
                       </span>
                       <h4 className="text-xs font-mono font-medium text-ds-primary mb-1 tracking-[0.02em]">
                         {zone.title}
                       </h4>
-                      <p className="text-[10px] font-mono font-medium text-on-surface-variant leading-[14px] truncate px-2">
-                        {isUploaded ? uploadedFile.name : zone.description}
-                      </p>
-                      {isUploaded && (
+                      {zoneError ? (
+                        <p className="text-[10px] font-mono font-medium text-red-600 leading-[14px] px-2">
+                          {zoneError}
+                        </p>
+                      ) : (
+                        <p className="text-[10px] font-mono font-medium text-on-surface-variant leading-[14px] truncate px-2">
+                          {isUploaded ? uploadedFile.name : zone.description}
+                        </p>
+                      )}
+                      {isUploaded && !zoneError && (
                         <div className="w-full h-1 bg-emerald-accent mt-2 rounded-full opacity-50" />
                       )}
                     </label>

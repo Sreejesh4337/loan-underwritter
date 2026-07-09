@@ -16,7 +16,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from src.analysis.cross_check import cross_check
+from src.analysis.cross_check import check_name_consistency, cross_check
 from src.analysis.metrics import compute_metrics, to_transactions
 from src.extractors.bank_statement_extractor import classify_unmatched_descriptions, extract_account_holder
 from src.extractors.income_extractor import extract_income
@@ -31,7 +31,7 @@ from src.parsers.income_parser import ParsedIncomeDocument
 from src.parsers.kyc_parser import ParsedKycDocument
 from src.parsers.registry import parse_bank_statement, parse_income, parse_kyc
 from src.policy_engine.engine import evaluate as evaluate_policy
-from src.policy_engine.loader import DEFAULT_POLICY_PATH, policy_file_hash
+from src.policy_engine.loader import DEFAULT_POLICY_PATH, load_policy, policy_file_hash
 from src.schemas.underwriting import (
     Applicant,
     CreditBureau,
@@ -132,6 +132,26 @@ def route_after_plan(state: UnderwritingState) -> str:
 
 import tempfile
 
+
+def _check_parsed_document_identity(parsed: dict) -> str | None:
+    """Deterministic, pre-extraction identity check: reads the applicant name
+    straight off each parser's output (no LLM call needed for any of the
+    three) and returns an error message if they don't match, else None."""
+    kyc_name = parsed["kyc"].get("label_value_pairs", {}).get("FULL NAME")
+    income_name = parsed["income"].get("header_fields", {}).get("Applicant")
+    bank_name, _account_type = extract_account_holder(
+        ParsedBankStatement(header_text=parsed["bank_statement"]["header_text"], transactions=[], warnings=[], source_file="")
+    )
+    if not (kyc_name and income_name and bank_name):
+        return None
+    name_ok, name_error = check_name_consistency(
+        kyc_full_name=kyc_name,
+        income_sheet_applicant_name=income_name,
+        bank_account_holder_name=bank_name,
+    )
+    return None if name_ok else name_error
+
+
 def parse_documents_node(state: UnderwritingState) -> dict:
     step_status = _mark_running(state, "parse_documents")
     parsed: dict = {}
@@ -168,6 +188,13 @@ def parse_documents_node(state: UnderwritingState) -> dict:
         warnings["bank_statement"] = bs_doc_dict["warnings"]
     except ParserError as exc:
         errors.append({"node": "parse_documents", "message": f"bank_statement: {exc}"})
+
+    if not errors:
+        # Reject a cross-applicant document mix before spending any LLM tokens
+        # on extraction.
+        identity_error = _check_parsed_document_identity(parsed)
+        if identity_error:
+            errors.append({"node": "parse_documents", "message": identity_error})
 
     run_status = "failed_input" if errors else state["run_status"]
     step_status = _mark_done(step_status, "parse_documents", error="; ".join(e["message"] for e in errors) or None)
@@ -268,6 +295,8 @@ def merge_and_cross_check_node(state: UnderwritingState) -> dict:
     income = state["extracted_income"]
     bank_statement = state["extracted_bank_statement"]
     transactions = [Transaction(**t) for t in bank_statement["transactions"]]
+    parsed_income = state["parsed"]["income"]
+    tolerance_pct = load_policy(DEFAULT_POLICY_PATH)["thresholds"]["income_consistency"]["tolerance_pct"]
 
     result = cross_check(
         employment_type=applicant.employment_type,
@@ -276,6 +305,9 @@ def merge_and_cross_check_node(state: UnderwritingState) -> dict:
         bank_account_holder_name=bank_statement["account_holder"] or applicant.full_name,
         income_sheet_average_net_pay=income.get("average_net_pay"),
         transactions=transactions,
+        monthly_table_header=parsed_income.get("monthly_table_header"),
+        monthly_rows=parsed_income.get("monthly_rows"),
+        tolerance_pct=tolerance_pct,
     )
 
     step_status = _mark_done(step_status, "merge_and_cross_check")
@@ -284,6 +316,7 @@ def merge_and_cross_check_node(state: UnderwritingState) -> dict:
             "net_monthly_income": result.net_monthly_income,
             "net_monthly_income_source": result.net_monthly_income_source,
             "name_consistency_ok": result.name_consistency_ok,
+            "income_consistency_ok": result.income_consistency_ok,
             "warnings": result.warnings,
         },
         "step_status": step_status,
@@ -312,6 +345,8 @@ def compute_metrics_node(state: UnderwritingState) -> dict:
         tenor_months=loan_request.tenor_months,
         indicative_rate_pct=loan_request.indicative_rate_pct,
         vintage_months=state["extracted_income"]["vintage_months"],
+        name_consistency_ok=cc["name_consistency_ok"],
+        income_consistency_ok=cc["income_consistency_ok"],
     )
 
     step_status = _mark_done(step_status, "compute_metrics")

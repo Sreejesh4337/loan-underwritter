@@ -30,6 +30,7 @@ description that doesn't match a known regex category.
 
 from __future__ import annotations
 
+import io
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -195,6 +196,24 @@ def _reassemble_wrapped_rows(raw_rows: list[dict[str, str]]) -> tuple[list[RawTr
         transactions.append(pending_row)
 
     return transactions, warnings
+
+
+def sniff_bank_statement(content: bytes) -> bool:
+    """Return True iff the transaction table header row is found on the
+    first page. Cheap presence check for upload-time document-type
+    validation — the header repeats on every page (see module docstring),
+    so checking page 1 is sufficient. Never raises; returns False for
+    unreadable or non-PDF bytes."""
+    try:
+        with pdfplumber.open(io.BytesIO(content)) as pdf:
+            if not pdf.pages:
+                return False
+            words = pdf.pages[0].extract_words()
+            if not words:
+                return False
+            return any(_is_header_row(row) for row in _cluster_rows(words))
+    except Exception:
+        return False
 
 
 def parse_bank_statement_pdf(path: Path) -> ParsedBankStatement:

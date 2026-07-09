@@ -24,6 +24,8 @@ def make_metrics(**overrides) -> FinancialMetrics:
         salary_credit_months_count=6,
         vintage_months=24,
         unexplained_cash_deposit_flag=False,
+        name_mismatch_flag=False,
+        income_mismatch_flag=False,
     )
     base.update(overrides)
     return FinancialMetrics(**base)
@@ -61,6 +63,16 @@ class TestDeclineRules:
         # salary_credit_months_count=None means self-employed; D4 must not fire.
         result = evaluate(make_metrics(salary_credit_months_count=None), credit_score=750)
         assert result.decision == Decision.APPROVE
+
+    def test_d5_name_mismatch(self):
+        result = evaluate(make_metrics(name_mismatch_flag=True), credit_score=750)
+        assert result.decision == Decision.DECLINE
+        assert any(r.rule_id == "D5_NAME_MISMATCH" for r in result.fired_rules)
+
+    def test_d6_income_mismatch(self):
+        result = evaluate(make_metrics(income_mismatch_flag=True), credit_score=750)
+        assert result.decision == Decision.DECLINE
+        assert any(r.rule_id == "D6_INCOME_MISMATCH" for r in result.fired_rules)
 
     def test_decline_takes_precedence_over_high_income_override(self):
         result = evaluate(

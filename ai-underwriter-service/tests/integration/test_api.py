@@ -4,17 +4,84 @@ HTTP, so it's slower than the unit suite but validates the whole wiring
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from src.api.main import app
+from src.api.runs_store import list_runs
 
 client = TestClient(app)
+
+APPS_DIR = Path(__file__).resolve().parents[2].parent / "docs" / "applications"
+
+
+def _doc(app_id: str, filename: str, content_type: str) -> tuple[str, bytes, str]:
+    return (filename, (APPS_DIR / app_id / filename).read_bytes(), content_type)
+
+
+def _upload_files(bank: tuple, kyc: tuple, income: tuple) -> dict:
+    return {
+        "bank_statement": bank,
+        "kyc_and_credit": kyc,
+        "income_details": income,
+    }
 
 
 def test_health():
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_upload_rejects_single_mismatched_document():
+    runs_before = len(list_runs())
+    files = _upload_files(
+        bank=_doc("APP-001", "kyc_and_credit.pdf", "application/pdf"),  # wrong slot
+        kyc=_doc("APP-001", "kyc_and_credit.pdf", "application/pdf"),
+        income=_doc(
+            "APP-001",
+            "income_details.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ),
+    )
+    response = client.post("/applications/upload", files=files)
+    assert response.status_code == 422
+    errors = response.json()["detail"]["errors"]
+    assert list(errors.keys()) == ["bank_statement"]
+    assert len(list_runs()) == runs_before
+
+
+def test_upload_rejects_all_three_documents_swapped():
+    runs_before = len(list_runs())
+    files = _upload_files(
+        bank=_doc("APP-001", "kyc_and_credit.pdf", "application/pdf"),
+        kyc=_doc("APP-001", "bank_statement.pdf", "application/pdf"),
+        income=_doc("APP-001", "bank_statement.pdf", "application/pdf"),
+    )
+    response = client.post("/applications/upload", files=files)
+    assert response.status_code == 422
+    errors = response.json()["detail"]["errors"]
+    assert set(errors.keys()) == {"bank_statement", "kyc_and_credit", "income_details"}
+    assert len(list_runs()) == runs_before
+
+
+def test_upload_succeeds_with_matching_documents():
+    files = _upload_files(
+        bank=_doc("APP-001", "bank_statement.pdf", "application/pdf"),
+        kyc=_doc("APP-001", "kyc_and_credit.pdf", "application/pdf"),
+        income=_doc(
+            "APP-001",
+            "income_details.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ),
+    )
+    response = client.post("/applications/upload", files=files)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "queued"
+    assert body["application_id"].startswith("APP-")
+    assert body["run_id"]
 
 
 def test_full_run_lifecycle():

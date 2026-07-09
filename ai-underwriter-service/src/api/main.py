@@ -15,6 +15,14 @@ from src.api.runs_store import append_run, get_run, list_runs
 from src.api.schemas import RunCreateResponse, RunStatusResponse, UploadResponse
 from src.graph.build_graph import DEFAULT_CHECKPOINT_DB, compile_graph
 from src.db import save_document, get_output
+from src.schemas.underwriting import DocumentType
+from src.validation.document_validator import validate_document
+
+EXPECTED_SLOT_TYPES: dict[str, DocumentType] = {
+    "bank_statement": DocumentType.BANK_STATEMENT,
+    "kyc_and_credit": DocumentType.KYC_AND_CREDIT,
+    "income_details": DocumentType.INCOME_DETAILS,
+}
 
 # Load environment variables from .env file
 load_dotenv()
@@ -64,12 +72,18 @@ def _execute(application_id: str, run_id: str, thread_id: str, resume: bool) -> 
                 "input_paths": {}, # Removed logic expecting paths
             }
             final_state = graph.invoke(initial_state, config=config)
+        status = final_state.get("run_status", "failed")
+        run_error = None
+        if status == "failed_input":
+            messages = [e.get("message", "") for e in final_state.get("errors") or [] if e.get("message")]
+            run_error = "; ".join(messages) or None
         append_run(
             {
                 "run_id": run_id,
                 "application_id": application_id,
                 "thread_id": thread_id,
-                "status": final_state.get("run_status", "failed"),
+                "status": status,
+                "error": run_error,
                 "created_at": _now(),
             }
         )
@@ -99,11 +113,29 @@ async def upload_and_run(
     income_details: UploadFile = File(..., description="Income details XLSX"),
 ) -> UploadResponse:
     """Accept 3 uploaded documents, save them to DB, and trigger the underwriting pipeline."""
+    contents = {
+        "bank_statement": await bank_statement.read(),
+        "kyc_and_credit": await kyc_and_credit.read(),
+        "income_details": await income_details.read(),
+    }
+
+    errors: dict[str, str] = {}
+    for field_name, expected_type in EXPECTED_SLOT_TYPES.items():
+        message = validate_document(expected_type, contents[field_name])
+        if message:
+            errors[field_name] = message
+
+    if errors:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "Document validation failed.", "errors": errors},
+        )
+
     application_id = _next_application_id()
 
-    save_document(application_id, "bank_statement", await bank_statement.read())
-    save_document(application_id, "kyc_and_credit", await kyc_and_credit.read())
-    save_document(application_id, "income_details", await income_details.read())
+    save_document(application_id, "bank_statement", contents["bank_statement"])
+    save_document(application_id, "kyc_and_credit", contents["kyc_and_credit"])
+    save_document(application_id, "income_details", contents["income_details"])
 
     # Create and queue a run
     run_id = _new_run_id()

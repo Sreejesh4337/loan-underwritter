@@ -516,7 +516,12 @@ export function ApplicationAnalysis({
           <div className="mb-4 border-b border-outline-variant pb-2 flex justify-between items-center">
             <h3 className="text-lg font-semibold leading-6">Recommendation</h3>
             <span
-              className={`bg-ds-secondary-container text-on-ds-secondary-container text-xs font-mono font-medium px-3 py-1 rounded-full flex items-center gap-1 tracking-[0.02em]`}
+              className={`text-xs font-mono font-medium px-3 py-1 rounded-full flex items-center gap-1 tracking-[0.02em] ${
+                decisionData.decision.toLowerCase() === "approve" ? "bg-emerald-100 text-emerald-800" :
+                (decisionData.decision.toLowerCase() === "decline" || decisionData.decision.toLowerCase() === "reject") ? "bg-red-100 text-red-800" :
+                decisionData.decision.toLowerCase() === "refer" ? "bg-amber-100 text-amber-800" :
+                "bg-ds-secondary-container text-on-ds-secondary-container"
+              }`}
             >
               <span
                 className="material-symbols-outlined text-[14px]"

@@ -21,6 +21,7 @@ which table follows the header rows.
 
 from __future__ import annotations
 
+import io
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,32 @@ from .base import ParserError
 MONTHLY_TABLE_HEADER = "Month"
 BUSINESS_TABLE_HEADER = "Item"
 AVERAGE_ROW_LABEL = "Average net pay"
+_SNIFF_MAX_ROWS = 30
+
+
+def sniff_income(content: bytes) -> bool:
+    """Return True iff the first sheet contains MONTHLY_TABLE_HEADER or
+    BUSINESS_TABLE_HEADER as a first-cell marker within the first
+    _SNIFF_MAX_ROWS rows. Cheap presence check for upload-time
+    document-type validation. Never raises; returns False for unreadable
+    or non-xlsx bytes."""
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True, read_only=True)
+        ws = wb.worksheets[0]
+        for i, row in enumerate(ws.iter_rows(values_only=True)):
+            if i >= _SNIFF_MAX_ROWS:
+                break
+            cells = [c for c in row if c is not None]
+            if not cells:
+                continue
+            first = str(cells[0]).strip()
+            if first in (MONTHLY_TABLE_HEADER, BUSINESS_TABLE_HEADER):
+                wb.close()
+                return True
+        wb.close()
+    except Exception:
+        return False
+    return False
 
 
 @dataclass
@@ -49,6 +76,7 @@ def parse_income_xlsx(path: Path) -> ParsedIncomeDocument:
         wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
         ws = wb.worksheets[0]
         rows = [list(r) for r in ws.iter_rows(values_only=True)]
+        wb.close()
     except Exception as exc:
         raise ParserError(f"failed to parse income sheet {path}: {exc}") from exc
 

@@ -34,6 +34,8 @@ thresholds:
     refer_below_emi_multiple: 1.0
   unexplained_deposit:
     refer_above_income_fraction: 0.5
+  income_consistency:
+    tolerance_pct: 10.0
 
 high_income_override:
   min_net_monthly_income: 200000

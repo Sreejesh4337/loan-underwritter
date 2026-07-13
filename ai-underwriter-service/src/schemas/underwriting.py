@@ -40,6 +40,12 @@ class TransactionCategory(str, Enum):
     OTHER = "other"
 
 
+class DocumentType(str, Enum):
+    BANK_STATEMENT = "bank_statement"
+    KYC_AND_CREDIT = "kyc_and_credit"
+    INCOME_DETAILS = "income_details"
+
+
 class Applicant(BaseModel):
     applicant_id: str
     full_name: str
@@ -87,6 +93,8 @@ class FinancialMetrics(BaseModel):
     salary_credit_months_count: int | None = None  # None for self-employed
     vintage_months: int
     unexplained_cash_deposit_flag: bool = False
+    name_mismatch_flag: bool = False
+    income_mismatch_flag: bool = False
 
 
 class FiredRule(BaseModel):

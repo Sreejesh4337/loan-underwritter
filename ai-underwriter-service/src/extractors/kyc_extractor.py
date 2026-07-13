@@ -1,24 +1,18 @@
 """KYC/credit document extraction.
 
-Per the project brief's explicit "helper agent per document (small model)"
-ask: the primary path is a single cheap-model structured-output call over
-the document's clean parsed text, producing Applicant + LoanRequest +
-CreditBureau in one shot. When no LLM is configured (OPENAI_API_KEY unset —
-the default state of this sandbox) or the call fails validation, this falls
-back to a fully deterministic mapping off the parser's already-recovered
-label/value pairs (see src/parsers/kyc_parser.py) — the document's layout is
-an unambiguous fixed grid, so this fallback is exact, not approximate.
+Uses a cheap-model (gpt-4o-mini) structured-output call over the document's
+clean parsed text, producing Applicant + LoanRequest + CreditBureau in one
+shot. Requires OPENAI_API_KEY to be set in .env.
 """
 
 from __future__ import annotations
 
 import logging
-import re
 from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from src.llm.models import CHEAP_MODEL_NAME, get_cheap_model, llm_available
+from src.llm.models import CHEAP_MODEL_NAME, get_cheap_model
 from src.llm.pricing import estimate_cost_usd
 from src.parsers.kyc_parser import ParsedKycDocument
 from src.schemas.underwriting import Applicant, CreditBureau, EmploymentType, LoanRequest, StepUsage
@@ -49,61 +43,7 @@ class _KycExtractionSchema(BaseModel):
     indicative_rate_pct: float
 
 
-def _parse_money(text: str) -> float:
-    return float(re.sub(r"[^\d.]", "", text))
-
-
-def _parse_int(text: str) -> int:
-    return int(re.sub(r"[^\d]", "", text))
-
-
-def _parse_pct(text: str) -> float:
-    match = re.search(r"[\d.]+", text)
-    if not match:
-        raise ValueError(f"could not parse a percentage out of {text!r}")
-    return float(match.group())
-
-
-def _extract_deterministic(parsed: ParsedKycDocument, applicant_id: str) -> tuple[Applicant, LoanRequest, CreditBureau]:
-    p = parsed.label_value_pairs
-    if not p:
-        raise ValueError("no label/value pairs available for deterministic KYC extraction")
-
-    employment_type = (
-        EmploymentType.SALARIED if p["EMPLOYMENT TYPE"].strip().lower() == "salaried" else EmploymentType.SELF_EMPLOYED
-    )
-    city_state = [s.strip() for s in p["CITY / STATE"].split(",", 1)]
-
-    applicant = Applicant(
-        applicant_id=applicant_id,
-        full_name=p["FULL NAME"],
-        date_of_birth=datetime.strptime(p["DATE OF BIRTH"], "%d %b %Y").date(),
-        pan_masked=p["PAN (MASKED)"],
-        mobile_masked=p["MOBILE (MASKED)"],
-        employment_type=employment_type,
-        employer_or_business=p["EMPLOYER / BUSINESS"],
-        address=p["ADDRESS"],
-        city=city_state[0] if city_state else None,
-        state=city_state[1] if len(city_state) > 1 else None,
-    )
-    loan_request = LoanRequest(
-        product=p["PRODUCT"],
-        requested_amount=_parse_money(p["REQUESTED AMOUNT"]),
-        tenor_months=_parse_int(p["TENOR"]),
-        indicative_rate_pct=_parse_pct(p["INDICATIVE RATE"]),
-    )
-    credit_bureau = CreditBureau(
-        credit_score=_parse_int(p["CREDIT SCORE"]),
-        active_loans=_parse_int(p["ACTIVE LOANS"]),
-        delinquencies_12m=_parse_int(p["PAST 12M DELINQUENCIES"]),
-        enquiries_6m=_parse_int(p["ENQUIRIES (6M)"]),
-    )
-    return applicant, loan_request, credit_bureau
-
-
-def _extract_llm(
-    parsed: ParsedKycDocument, applicant_id: str
-) -> tuple[Applicant, LoanRequest, CreditBureau, StepUsage]:
+def extract_kyc(parsed: ParsedKycDocument, applicant_id: str) -> tuple[Applicant, LoanRequest, CreditBureau, StepUsage]:
     model = get_cheap_model().with_structured_output(_KycExtractionSchema, include_raw=True)
     prompt = (
         "Extract the applicant, loan request, and credit bureau fields from this "
@@ -123,7 +63,7 @@ def _extract_llm(
         date_of_birth=datetime.strptime(extraction.date_of_birth, "%Y-%m-%d").date(),
         pan_masked=extraction.pan_masked,
         mobile_masked=extraction.mobile_masked,
-        employment_type=EmploymentType(extraction.employment_type),
+        employment_type=EmploymentType(extraction.employment_type.lower()),
         employer_or_business=extraction.employer_or_business,
         address=extraction.address,
         city=extraction.city,
@@ -149,14 +89,3 @@ def _extract_llm(
         cost_usd=estimate_cost_usd(CHEAP_MODEL_NAME, input_tokens, output_tokens),
     )
     return applicant, loan_request, credit_bureau, usage
-
-
-def extract_kyc(parsed: ParsedKycDocument, applicant_id: str) -> tuple[Applicant, LoanRequest, CreditBureau, StepUsage]:
-    if llm_available():
-        try:
-            return _extract_llm(parsed, applicant_id)
-        except Exception as exc:
-            logger.warning("LLM KYC extraction failed (%s); falling back to deterministic parsing", exc)
-
-    applicant, loan_request, credit_bureau = _extract_deterministic(parsed, applicant_id)
-    return applicant, loan_request, credit_bureau, StepUsage(step="extract_kyc", model="deterministic-fallback")

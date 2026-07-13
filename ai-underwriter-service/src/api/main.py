@@ -1,31 +1,34 @@
-"""FastAPI service — deliberately thin (filesystem-backed, BackgroundTasks,
-no queue/database): this is a demo service wrapping the LangGraph pipeline,
-not a production system. Run with: uvicorn src.api.main:app --reload
+"""FastAPI service — wraps the LangGraph pipeline with a file-upload API.
+Run with: uvicorn src.api.main:app --reload
 """
 
 from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 
 from dotenv import load_dotenv
-
-load_dotenv()
-
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 
 from src.api.runs_store import append_run, get_run, list_runs
-from src.api.schemas import RunCreateResponse, RunStatusResponse
+from src.api.schemas import RunCreateResponse, RunStatusResponse, UploadResponse
 from src.graph.build_graph import DEFAULT_CHECKPOINT_DB, compile_graph
-from src.inputs import resolve_input_paths
+from src.db import save_document, get_output
+from src.schemas.underwriting import DocumentType
+from src.validation.document_validator import validate_document
 
-app = FastAPI(title="AI Underwriting Analyst", description="Sandboxed loan underwriting recommendation service — read-only, never acts.")
+EXPECTED_SLOT_TYPES: dict[str, DocumentType] = {
+    "bank_statement": DocumentType.BANK_STATEMENT,
+    "kyc_and_credit": DocumentType.KYC_AND_CREDIT,
+    "income_details": DocumentType.INCOME_DETAILS,
+}
 
-# Demo-scoped: the local Vite dev server runs on a different port than
-# uvicorn. Not hardened for production multi-tenant deployment.
+# Load environment variables from .env file
+load_dotenv()
+
+app = FastAPI(title="AI Underwriting Analyst", description="Loan underwriting recommendation service — upload documents, get AI-powered risk assessment.")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -33,13 +36,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 def _new_run_id() -> str:
     return "run_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _next_application_id() -> str:
+    """Auto-generate the next APP-XXX id based on db."""
+    runs = list_runs()
+    existing = []
+    for r in runs:
+        if r["application_id"].startswith("APP-"):
+            try:
+                existing.append(int(r["application_id"].split("-")[1]))
+            except ValueError:
+                pass
+    next_num = max(existing, default=0) + 1
+    return f"APP-{next_num:03d}"
 
 
 def _execute(application_id: str, run_id: str, thread_id: str, resume: bool) -> None:
@@ -53,15 +69,21 @@ def _execute(application_id: str, run_id: str, thread_id: str, resume: bool) -> 
                 "application_id": application_id,
                 "run_id": run_id,
                 "thread_id": thread_id,
-                "input_paths": resolve_input_paths(application_id),
+                "input_paths": {}, # Removed logic expecting paths
             }
             final_state = graph.invoke(initial_state, config=config)
+        status = final_state.get("run_status", "failed")
+        run_error = None
+        if status == "failed_input":
+            messages = [e.get("message", "") for e in final_state.get("errors") or [] if e.get("message")]
+            run_error = "; ".join(messages) or None
         append_run(
             {
                 "run_id": run_id,
                 "application_id": application_id,
                 "thread_id": thread_id,
-                "status": final_state.get("run_status", "failed"),
+                "status": status,
+                "error": run_error,
                 "created_at": _now(),
             }
         )
@@ -83,46 +105,77 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-@app.post("/applications/{application_id}/runs", response_model=RunCreateResponse)
-def create_run(application_id: str, background_tasks: BackgroundTasks) -> RunCreateResponse:
-    app_dir = Path(resolve_input_paths(application_id)["bank_statement"]).parent
-    if not app_dir.is_dir():
-        raise HTTPException(404, f"unknown application_id {application_id!r}")
+@app.post("/applications/upload", response_model=UploadResponse)
+async def upload_and_run(
+    background_tasks: BackgroundTasks,
+    bank_statement: UploadFile = File(..., description="Bank statement PDF"),
+    kyc_and_credit: UploadFile = File(..., description="KYC & Credit PDF"),
+    income_details: UploadFile = File(..., description="Income details XLSX"),
+) -> UploadResponse:
+    """Accept 3 uploaded documents, save them to DB, and trigger the underwriting pipeline."""
+    contents = {
+        "bank_statement": await bank_statement.read(),
+        "kyc_and_credit": await kyc_and_credit.read(),
+        "income_details": await income_details.read(),
+    }
 
+    errors: dict[str, str] = {}
+    for field_name, expected_type in EXPECTED_SLOT_TYPES.items():
+        message = validate_document(expected_type, contents[field_name])
+        if message:
+            errors[field_name] = message
+
+    if errors:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "Document validation failed.", "errors": errors},
+        )
+
+    application_id = _next_application_id()
+
+    save_document(application_id, "bank_statement", contents["bank_statement"])
+    save_document(application_id, "kyc_and_credit", contents["kyc_and_credit"])
+    save_document(application_id, "income_details", contents["income_details"])
+
+    # Create and queue a run
     run_id = _new_run_id()
     thread_id = f"{application_id}:{run_id}"
     append_run(
         {"run_id": run_id, "application_id": application_id, "thread_id": thread_id, "status": "queued", "created_at": _now()}
     )
     background_tasks.add_task(_execute, application_id, run_id, thread_id, False)
-    return RunCreateResponse(run_id=run_id, thread_id=thread_id, status="queued")
+    return UploadResponse(application_id=application_id, run_id=run_id, thread_id=thread_id, status="queued")
 
 
 @app.get("/runs", response_model=list[RunStatusResponse])
 def get_all_runs() -> list[RunStatusResponse]:
-    return [RunStatusResponse(**r) for r in list_runs()]
+    runs = []
+    for r in list_runs():
+        applicant_name = None
+        decision = None
+        
+        # Stale run cleanup: Mark runs older than 10 minutes that are still processing as failed.
+        if r.get("status") in ("queued", "running"):
+            try:
+                created_at = datetime.fromisoformat(r["created_at"])
+                if (datetime.now(timezone.utc) - created_at).total_seconds() > 600:
+                    r["status"] = "failed"
+                    r["error"] = "Processing timed out after 10 minutes due to unexpected error or server restart."
+                    append_run(r)
+            except Exception:
+                pass
 
-
-# Mirrors the node order in build_graph.py. Each node marks itself "running"
-# then "done" within the same synchronous function before its single return,
-# so LangGraph only ever checkpoints the "done" state — "running" is never
-# actually persisted. This list lets the status endpoint infer, for display
-# purposes only, which not-yet-done node is the current frontier.
-_NODE_ORDER = [
-    "plan",
-    "parse_documents",
-    "extract_kyc",
-    "extract_income",
-    "extract_bank_statement",
-    "merge_and_cross_check",
-    "compute_metrics",
-    "evaluate_policy",
-    "decide",
-    "generate_outputs",
-    "done",
-]
-
-_TERMINAL_STATUSES = {"completed", "failed", "failed_input"}
+        if r.get("status") == "completed":
+            content = get_output(r["run_id"], "decision.json")
+            if content:
+                try:
+                    decision_data = json.loads(content.decode("utf-8"))
+                    applicant_name = decision_data.get("applicant", {}).get("full_name")
+                    decision = decision_data.get("decision")
+                except Exception:
+                    pass
+        runs.append(RunStatusResponse(**r, applicant_name=applicant_name, decision=decision))
+    return runs
 
 
 @app.get("/runs/{run_id}", response_model=RunStatusResponse)
@@ -136,16 +189,11 @@ def get_run_status(run_id: str) -> RunStatusResponse:
     try:
         graph = compile_graph(DEFAULT_CHECKPOINT_DB)
         state = graph.get_state({"configurable": {"thread_id": record["thread_id"]}})
-        step_status = dict(state.values.get("step_status", {}))
+        step_status = state.values.get("step_status", {})
+        running = [n for n, s in step_status.items() if s.get("status") == "running"]
+        current_step = running[0] if running else None
     except Exception:
         pass
-
-    if record["status"] not in _TERMINAL_STATUSES:
-        for node in _NODE_ORDER:
-            if step_status.get(node, {}).get("status") not in ("done", "failed"):
-                current_step = node
-                step_status[node] = {**step_status.get(node, {}), "status": "running"}
-                break
 
     return RunStatusResponse(**record, current_step=current_step, step_status=step_status)
 
@@ -156,63 +204,34 @@ def resume_run(run_id: str, background_tasks: BackgroundTasks) -> RunStatusRespo
     if record is None:
         raise HTTPException(404, f"unknown run_id {run_id!r}")
 
+    record["error"] = None
     append_run({**record, "status": "queued"})
     background_tasks.add_task(_execute, record["application_id"], run_id, record["thread_id"], True)
     return RunStatusResponse(**record, status="queued")
 
 
-def _run_output_path(run_id: str, filename: str) -> Path:
-    record = get_run(run_id)
-    if record is None:
-        raise HTTPException(404, f"unknown run_id {run_id!r}")
-    path = Path("data/runs") / record["application_id"] / run_id / "outputs" / filename
-    if not path.exists():
-        raise HTTPException(404, f"{filename} not yet available for run {run_id!r} (status={record.get('status')})")
-    return path
-
-
 @app.get("/runs/{run_id}/decision")
 def get_decision(run_id: str) -> dict:
-    path = _run_output_path(run_id, "decision.json")
-    return json.loads(path.read_text())
+    content = get_output(run_id, "decision.json")
+    if not content:
+        raise HTTPException(404, "Decision not yet available.")
+    return json.loads(content.decode("utf-8"))
 
 
 @app.get("/runs/{run_id}/memo")
-def get_memo(run_id: str) -> FileResponse:
-    return FileResponse(_run_output_path(run_id, "memo.pdf"), media_type="application/pdf")
+def get_memo(run_id: str) -> Response:
+    content = get_output(run_id, "memo.pdf")
+    if not content:
+        raise HTTPException(404, "Memo not yet available.")
+    return Response(content=content, media_type="application/pdf")
 
 
 @app.get("/runs/{run_id}/cashflow")
-def get_cashflow(run_id: str) -> FileResponse:
-    return FileResponse(
-        _run_output_path(run_id, "cashflow.xlsx"),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+def get_cashflow(run_id: str) -> Response:
+    content = get_output(run_id, "cashflow.xlsx")
+    if not content:
+        raise HTTPException(404, "Cashflow not yet available.")
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
-
-@app.post("/eval/run")
-def trigger_eval(apps: str = "all", min_accuracy: float = 1.0) -> dict:
-    from eval.run_eval import evaluate_one, summarize
-
-    app_ids = (
-        sorted(p.stem.replace(".expected", "") for p in Path("eval/fixtures").glob("APP-*.expected.yaml"))
-        if apps == "all"
-        else apps.split(",")
-    )
-    run_id = "eval-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    results = [evaluate_one(app_id, run_id) for app_id in app_ids]
-    summary = summarize(results)
-
-    report_path = Path("eval/reports") / f"run_{run_id}.json"
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps({"summary": summary, "results": results}, indent=2, default=str))
-
-    return {"report_id": run_id, "summary": summary, "passed": summary["decision_accuracy"] >= min_accuracy}
-
-
-@app.get("/eval/latest")
-def get_latest_eval() -> dict:
-    reports = sorted(Path("eval/reports").glob("run_*.json"))
-    if not reports:
-        raise HTTPException(404, "no eval reports yet — trigger one with POST /eval/run")
-    return json.loads(reports[-1].read_text())

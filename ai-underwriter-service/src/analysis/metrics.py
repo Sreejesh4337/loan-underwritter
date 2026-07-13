@@ -131,6 +131,8 @@ def compute_metrics(
     tenor_months: int,
     indicative_rate_pct: float,
     vintage_months: int,
+    name_consistency_ok: bool = True,
+    income_consistency_ok: bool = True,
 ) -> FinancialMetrics:
     existing_emis = detect_recurring_emi(transactions)
     proposed_emi = calculate_emi(requested_amount, indicative_rate_pct, tenor_months)
@@ -153,4 +155,6 @@ def compute_metrics(
         salary_credit_months_count=salary_months,
         vintage_months=vintage_months,
         unexplained_cash_deposit_flag=unexplained_deposit,
+        name_mismatch_flag=not name_consistency_ok,
+        income_mismatch_flag=not income_consistency_ok,
     )

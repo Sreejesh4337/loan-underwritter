@@ -8,10 +8,14 @@ bank credits.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from src.analysis.metrics import average_monthly_bank_credits
-from src.schemas.underwriting import EmploymentType, Transaction
+from src.schemas.underwriting import EmploymentType, Transaction, TransactionCategory
+
+DEFAULT_INCOME_TOLERANCE_PCT = 10.0
 
 
 @dataclass
@@ -19,6 +23,7 @@ class CrossCheckResult:
     net_monthly_income: float
     net_monthly_income_source: str  # "income_sheet" | "bank_avg_credits"
     name_consistency_ok: bool
+    income_consistency_ok: bool = True
     warnings: list[str] = field(default_factory=list)
 
 
@@ -39,6 +44,84 @@ def _normalize_name(name: str) -> str:
     return " ".join(name.strip().lower().split())
 
 
+def check_name_consistency(
+    *,
+    kyc_full_name: str,
+    income_sheet_applicant_name: str,
+    bank_account_holder_name: str,
+) -> tuple[bool, str | None]:
+    """Compare the applicant name as it appears on each of the three
+    documents. Exposed standalone (in addition to being used by `cross_check`)
+    so it can also be run as an upload-time / pre-extraction reject, before
+    any LLM extraction is attempted."""
+    names = {
+        _normalize_name(kyc_full_name),
+        _normalize_name(income_sheet_applicant_name),
+        _normalize_name(bank_account_holder_name),
+    }
+    if len(names) == 1:
+        return True, None
+    return False, (
+        f"applicant name mismatch across documents: KYC={kyc_full_name!r}, "
+        f"income sheet={income_sheet_applicant_name!r}, bank statement={bank_account_holder_name!r}"
+    )
+
+
+def check_salary_consistency(
+    *,
+    monthly_table_header: list[str],
+    monthly_rows: list[list],
+    transactions: list[Transaction],
+    tolerance_pct: float = DEFAULT_INCOME_TOLERANCE_PCT,
+) -> tuple[bool, list[str]]:
+    """Verify each income-sheet monthly net-pay row against that same calendar
+    month's actual salary credits in the bank statement. A month with no
+    salary credit at all, or one whose credit total differs from the
+    declared net pay by more than `tolerance_pct`, is a failure."""
+    if not monthly_rows:
+        return True, []
+
+    try:
+        month_idx = monthly_table_header.index("Month")
+        net_pay_idx = next(i for i, h in enumerate(monthly_table_header) if h.startswith("Net pay"))
+    except (ValueError, StopIteration):
+        return True, []
+
+    actual_salary_by_month: dict[tuple[int, int], float] = defaultdict(float)
+    for t in transactions:
+        if t.category == TransactionCategory.SALARY:
+            actual_salary_by_month[(t.txn_date.year, t.txn_date.month)] += t.credit
+
+    ok = True
+    warnings: list[str] = []
+    for row in monthly_rows:
+        month_label = str(row[month_idx]).strip()
+        declared = float(row[net_pay_idx])
+        try:
+            parsed_month = datetime.strptime(month_label, "%b %Y")
+        except ValueError:
+            continue
+        key = (parsed_month.year, parsed_month.month)
+        actual = actual_salary_by_month.get(key)
+        if actual is None:
+            ok = False
+            warnings.append(
+                f"income sheet declares a salary of {declared:,.0f} for {month_label}, but no "
+                "salary credit was found in the bank statement for that month"
+            )
+            continue
+        diff_pct = abs(actual - declared) / declared * 100 if declared else 0.0
+        if diff_pct > tolerance_pct:
+            ok = False
+            warnings.append(
+                f"income sheet declares a salary of {declared:,.0f} for {month_label}, but the "
+                f"bank statement shows {actual:,.0f} for that month ({diff_pct:.1f}% difference, "
+                f"exceeding the {tolerance_pct:.0f}% tolerance)"
+            )
+
+    return ok, warnings
+
+
 def cross_check(
     *,
     employment_type: EmploymentType,
@@ -47,19 +130,18 @@ def cross_check(
     bank_account_holder_name: str,
     income_sheet_average_net_pay: float | None,
     transactions: list[Transaction],
+    monthly_table_header: list[str] | None = None,
+    monthly_rows: list[list] | None = None,
+    tolerance_pct: float = DEFAULT_INCOME_TOLERANCE_PCT,
 ) -> CrossCheckResult:
     warnings: list[str] = []
-    names = {
-        _normalize_name(kyc_full_name),
-        _normalize_name(income_sheet_applicant_name),
-        _normalize_name(bank_account_holder_name),
-    }
-    name_ok = len(names) == 1
-    if not name_ok:
-        warnings.append(
-            f"applicant name mismatch across documents: KYC={kyc_full_name!r}, "
-            f"income sheet={income_sheet_applicant_name!r}, bank statement={bank_account_holder_name!r}"
-        )
+    name_ok, name_error = check_name_consistency(
+        kyc_full_name=kyc_full_name,
+        income_sheet_applicant_name=income_sheet_applicant_name,
+        bank_account_holder_name=bank_account_holder_name,
+    )
+    if name_error:
+        warnings.append(name_error)
 
     income, source = resolve_net_monthly_income(
         employment_type=employment_type,
@@ -67,9 +149,20 @@ def cross_check(
         transactions=transactions,
     )
 
+    income_ok = True
+    if employment_type == EmploymentType.SALARIED:
+        income_ok, income_warnings = check_salary_consistency(
+            monthly_table_header=monthly_table_header or [],
+            monthly_rows=monthly_rows or [],
+            transactions=transactions,
+            tolerance_pct=tolerance_pct,
+        )
+        warnings.extend(income_warnings)
+
     return CrossCheckResult(
         net_monthly_income=income,
         net_monthly_income_source=source,
         name_consistency_ok=name_ok,
+        income_consistency_ok=income_ok,
         warnings=warnings,
     )

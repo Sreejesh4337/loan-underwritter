@@ -12,9 +12,20 @@ from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile, R
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.runs_store import append_run, get_run, list_runs
-from src.api.schemas import RunCreateResponse, RunStatusResponse, UploadResponse
+from src.api.schemas import (
+    ApplicantProfileResponse,
+    RunCreateResponse,
+    RunStatusResponse,
+    SalaryCreditResponse,
+    UploadResponse,
+)
 from src.graph.build_graph import DEFAULT_CHECKPOINT_DB, compile_graph
-from src.db import save_document, get_output
+from src.db import (
+    save_document,
+    get_output,
+    get_applicant_profile_by_run_id,
+    get_salary_credits_by_run_id,
+)
 from src.schemas.underwriting import DocumentType
 from src.validation.document_validator import validate_document
 
@@ -216,6 +227,20 @@ def get_decision(run_id: str) -> dict:
     if not content:
         raise HTTPException(404, "Decision not yet available.")
     return json.loads(content.decode("utf-8"))
+
+
+@app.get("/runs/{run_id}/profile", response_model=ApplicantProfileResponse)
+def get_applicant_profile(run_id: str) -> ApplicantProfileResponse:
+    profile = get_applicant_profile_by_run_id(run_id)
+    if not profile:
+        raise HTTPException(404, "Applicant profile not yet available.")
+    profile.pop("raw_json", None)
+    return ApplicantProfileResponse(**profile)
+
+
+@app.get("/runs/{run_id}/salary-credits", response_model=list[SalaryCreditResponse])
+def get_salary_credits(run_id: str) -> list[SalaryCreditResponse]:
+    return [SalaryCreditResponse(**row) for row in get_salary_credits_by_run_id(run_id)]
 
 
 @app.get("/runs/{run_id}/memo")

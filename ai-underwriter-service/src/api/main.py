@@ -146,7 +146,7 @@ async def upload_and_run(
     background_tasks.add_task(_execute, application_id, run_id, thread_id, False)
     return UploadResponse(application_id=application_id, run_id=run_id, thread_id=thread_id, status="queued")
 
-
+#get function
 @app.get("/runs", response_model=list[RunStatusResponse])
 def get_all_runs() -> list[RunStatusResponse]:
     runs = []

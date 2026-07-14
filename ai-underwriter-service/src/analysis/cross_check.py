@@ -8,6 +8,7 @@ bank credits.
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -16,6 +17,11 @@ from src.analysis.metrics import average_monthly_bank_credits
 from src.schemas.underwriting import EmploymentType, Transaction, TransactionCategory
 
 DEFAULT_INCOME_TOLERANCE_PCT = 10.0
+
+# Honorifics stripped before name comparison — they're formatting noise, not
+# identity information, and different documents/extractions include them
+# inconsistently.
+_HONORIFICS = {"mr", "mrs", "ms", "miss", "mx", "dr", "shri", "smt", "kumari"}
 
 
 @dataclass
@@ -40,8 +46,26 @@ def resolve_net_monthly_income(
     return average_monthly_bank_credits(transactions), "bank_avg_credits"
 
 
-def _normalize_name(name: str) -> str:
-    return " ".join(name.strip().lower().split())
+def _name_tokens(name: str) -> set[str]:
+    """Lowercase, strip punctuation, and drop honorifics — leaving the bare
+    set of name tokens so word order, titles, and punctuation differences
+    between independently-extracted documents don't register as identity
+    mismatches."""
+    cleaned = re.sub(r"[^\w\s]", " ", name.strip().lower())
+    return {t for t in cleaned.split() if t not in _HONORIFICS}
+
+
+def _names_consistent(a: set[str], b: set[str]) -> bool:
+    """Two token sets are consistent if one is a subset of the other, so a
+    missing middle name or an initial standing in for a full given name
+    (both common across KYC/income/bank documents) isn't flagged. Bare
+    single-letter initials are dropped from both sides first — otherwise
+    "R Verma" vs "Rohan Verma" (same token count either way) could pick
+    the wrong side as the "smaller" one to check."""
+    core_a = {t for t in a if len(t) > 1} or a
+    core_b = {t for t in b if len(t) > 1} or b
+    smaller, larger = (core_a, core_b) if len(core_a) <= len(core_b) else (core_b, core_a)
+    return bool(smaller) and smaller.issubset(larger)
 
 
 def check_name_consistency(
@@ -55,11 +79,18 @@ def check_name_consistency(
     so it can also be run as an upload-time / pre-extraction reject, before
     any LLM extraction is attempted."""
     names = {
-        _normalize_name(kyc_full_name),
-        _normalize_name(income_sheet_applicant_name),
-        _normalize_name(bank_account_holder_name),
+        "kyc": kyc_full_name,
+        "income sheet": income_sheet_applicant_name,
+        "bank statement": bank_account_holder_name,
     }
-    if len(names) == 1:
+    tokens = {label: _name_tokens(n) for label, n in names.items()}
+    labels = list(tokens)
+    ok = all(
+        _names_consistent(tokens[labels[i]], tokens[labels[j]])
+        for i in range(len(labels))
+        for j in range(i + 1, len(labels))
+    )
+    if ok:
         return True, None
     return False, (
         f"applicant name mismatch across documents: KYC={kyc_full_name!r}, "

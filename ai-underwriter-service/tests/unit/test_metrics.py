@@ -200,13 +200,29 @@ class TestCrossCheck:
         result = cross_check(
             employment_type=EmploymentType.SALARIED,
             kyc_full_name="Rahul Mehta",
-            income_sheet_applicant_name="R. Mehta",
+            income_sheet_applicant_name="Priya Sharma",
             bank_account_holder_name="Rahul Mehta",
             income_sheet_average_net_pay=120000.0,
             transactions=app001_transactions,
         )
         assert result.name_consistency_ok is False
         assert result.warnings
+
+    def test_tolerates_initial_honorific_and_word_order(self, app001_transactions):
+        """An initial standing in for a given name, an honorific prefix, and
+        reversed word order are formatting noise from independent LLM
+        extractions, not identity mismatches — see src/analysis/cross_check.py's
+        _names_consistent."""
+        result = cross_check(
+            employment_type=EmploymentType.SALARIED,
+            kyc_full_name="Rahul Mehta",
+            income_sheet_applicant_name="R. Mehta",
+            bank_account_holder_name="MR MEHTA RAHUL",
+            income_sheet_average_net_pay=120000.0,
+            transactions=app001_transactions,
+        )
+        assert result.name_consistency_ok is True
+        assert result.warnings == []
 
 
 class TestSalaryConsistency:

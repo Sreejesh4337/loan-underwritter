@@ -161,6 +161,65 @@ export async function getDecision(runId: string): Promise<DecisionResponse> {
   return res.json();
 }
 
+export interface ApplicantProfileResponse {
+  run_id: string;
+  application_id: string;
+  applicant_id: string | null;
+  full_name: string | null;
+  date_of_birth: string | null;
+  pan_masked: string | null;
+  mobile_masked: string | null;
+  employment_type: string | null;
+  employer_or_business: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  product: string | null;
+  requested_amount: number | null;
+  tenor_months: number | null;
+  indicative_rate_pct: number | null;
+  credit_score: number | null;
+  active_loans: number | null;
+  delinquencies_12m: number | null;
+  enquiries_6m: number | null;
+  net_monthly_income: number | null;
+  net_monthly_income_source: string | null;
+  foir_pct: number | null;
+  avg_bank_balance: number | null;
+  vintage_months: number | null;
+  payment_returns_count: number | null;
+  created_at: string | null;
+}
+
+export interface SalaryCreditResponse {
+  txn_date: string;
+  description: string | null;
+  credit_amount: number | null;
+  balance: number | null;
+}
+
+/**
+ * Fetch the persisted applicant profile for a run.
+ */
+export async function getApplicantProfile(runId: string): Promise<ApplicantProfileResponse> {
+  const res = await fetch(`${API_BASE}/runs/${runId}/profile`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch applicant profile (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * Fetch the salary-credit transactions detected in the bank statement for a run.
+ */
+export async function getSalaryCredits(runId: string): Promise<SalaryCreditResponse[]> {
+  const res = await fetch(`${API_BASE}/runs/${runId}/salary-credits`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch salary credits (${res.status})`);
+  }
+  return res.json();
+}
+
 /**
  * Get the download URL for the underwriting memo PDF.
  */

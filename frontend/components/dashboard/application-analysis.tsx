@@ -12,6 +12,8 @@ import {
   type DecisionResponse,
   type RunStatusResponse,
 } from "@/lib/api";
+import { ApplicantProfileCard } from "@/components/dashboard/applicant-profile-card";
+import { SalaryCreditsTable } from "@/components/dashboard/salary-credits-table";
 
 type UploadId = "bank" | "kyc" | "income";
 
@@ -537,18 +539,11 @@ export function ApplicationAnalysis({
             </span>
           </div>
 
-          {/* Applicant Info */}
-          <div className="mb-4 p-2 bg-surface-container-low rounded border border-outline-variant">
-            <p className="text-[10px] font-mono font-medium text-on-surface-variant mb-1 uppercase tracking-wider leading-[14px]">
-              Applicant
-            </p>
-            <p className="text-sm font-semibold">
-              {decisionData.applicant.full_name}
-            </p>
-            <p className="text-[11px] text-on-surface-variant capitalize">
-              {decisionData.applicant.employment_type.replace("_", " ")}
-            </p>
-          </div>
+          {/* Applicant Profile */}
+          {runId && <ApplicantProfileCard runId={runId} />}
+
+          {/* Salary Credits */}
+          {runId && <SalaryCreditsTable runId={runId} />}
 
           {/* Metrics Grid */}
           <div className="grid grid-cols-2 gap-5 mb-6">

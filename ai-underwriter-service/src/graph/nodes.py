@@ -16,9 +16,10 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from src.analysis.cross_check import cross_check
-from src.analysis.metrics import compute_metrics
-from src.extractors.bank_statement_extractor import extract_bank_statement
+from src.analysis.cross_check import check_name_consistency, cross_check
+from src.analysis.metrics import compute_metrics, to_transactions
+from src.db import save_applicant_profile, save_salary_credits
+from src.extractors.bank_statement_extractor import classify_unmatched_descriptions, extract_account_holder
 from src.extractors.income_extractor import extract_income
 from src.extractors.kyc_extractor import extract_kyc
 from src.graph.state import UnderwritingState, new_step_status
@@ -41,6 +42,7 @@ from src.schemas.underwriting import (
     RunUsage,
     StepUsage,
     Transaction,
+    TransactionCategory,
     UnderwritingResult,
 )
 from src.skills.cashflow_generator import generate_cashflow_excel
@@ -293,6 +295,7 @@ def compute_metrics_node(state: UnderwritingState) -> dict:
     step_status = _mark_running(state, "compute_metrics")
     applicant = Applicant(**state["extracted_kyc"]["applicant"])
     loan_request = LoanRequest(**state["extracted_kyc"]["loan_request"])
+    credit_bureau = CreditBureau(**state["extracted_kyc"]["credit_bureau"])
     transactions = [Transaction(**t) for t in state["extracted_bank_statement"]["transactions"]]
     cc = state["cross_check"]
 
@@ -308,6 +311,62 @@ def compute_metrics_node(state: UnderwritingState) -> dict:
         name_consistency_ok=cc["name_consistency_ok"],
         income_consistency_ok=cc["income_consistency_ok"],
     )
+
+    try:
+        save_applicant_profile({
+            "run_id": state["run_id"],
+            "application_id": state["application_id"],
+            "applicant_id": applicant.applicant_id,
+            "full_name": applicant.full_name,
+            "date_of_birth": applicant.date_of_birth.isoformat() if applicant.date_of_birth else None,
+            "pan_masked": applicant.pan_masked,
+            "mobile_masked": applicant.mobile_masked,
+            "employment_type": applicant.employment_type.value,
+            "employer_or_business": applicant.employer_or_business,
+            "address": applicant.address,
+            "city": applicant.city,
+            "state": applicant.state,
+            "product": loan_request.product,
+            "requested_amount": loan_request.requested_amount,
+            "tenor_months": loan_request.tenor_months,
+            "indicative_rate_pct": loan_request.indicative_rate_pct,
+            "credit_score": credit_bureau.credit_score,
+            "active_loans": credit_bureau.active_loans,
+            "delinquencies_12m": credit_bureau.delinquencies_12m,
+            "enquiries_6m": credit_bureau.enquiries_6m,
+            "net_monthly_income": metrics.net_monthly_income,
+            "net_monthly_income_source": metrics.net_monthly_income_source,
+            "foir_pct": metrics.foir_pct,
+            "avg_bank_balance": metrics.avg_bank_balance,
+            "vintage_months": metrics.vintage_months,
+            "payment_returns_count": metrics.payment_returns_count,
+            "raw_json": json.dumps({
+                "applicant": applicant.model_dump(mode="json"),
+                "loan_request": loan_request.model_dump(mode="json"),
+                "credit_bureau": credit_bureau.model_dump(mode="json"),
+                "metrics": metrics.model_dump(mode="json"),
+            }),
+            "created_at": _now(),
+        })
+    except Exception as exc:
+        logger.error(f"Failed to persist applicant profile for run {state['run_id']}: {exc}")
+
+    try:
+        salary_transactions = [t for t in transactions if t.category == TransactionCategory.SALARY]
+        save_salary_credits(
+            state["run_id"],
+            [
+                {
+                    "txn_date": t.txn_date.isoformat(),
+                    "description": t.description,
+                    "credit_amount": t.credit,
+                    "balance": t.balance,
+                }
+                for t in salary_transactions
+            ],
+        )
+    except Exception as exc:
+        logger.error(f"Failed to persist salary credits for run {state['run_id']}: {exc}")
 
     step_status = _mark_done(step_status, "compute_metrics")
     return {"metrics": metrics.model_dump(mode="json"), "step_status": step_status, "updated_at": _now()}

@@ -1,34 +1,27 @@
 """Parser for the KYC & Credit Summary PDF.
 
-Confirmed layout (by direct inspection of the sample packets): a clean
-two-column key/value page. `pdfplumber`'s layout-aware `extract_text()`
-already resolves it into alternating "LABEL LABEL" / "value value" lines
-(pdfplumber's text mode, unlike PyPDF's older extractor, respects horizontal
-position when joining words on a line). That raw text is what the LLM
-extractor reads directly.
+This module only pulls raw text out of the PDF (pdfplumber's layout-aware
+`extract_text()`, which respects horizontal position when joining words on a
+line). Turning that text into typed fields is the LLM extractor's job (see
+`src/extractors/kyc_extractor.py`) rather than position-based label/value
+splitting here.
 
-This parser additionally recovers a clean `label -> value` dict using the
-same word-position column-detection technique as the bank statement parser
-(left column x0 ~68, right column x0 ~297.6, confirmed identical across the
-sample apps): each known label's value is whichever line immediately follows
-it in the same column. This is genuinely just "reading the document" — no
-language understanding is needed since the layout is a fixed, unambiguous
-grid — and it's what powers the deterministic fallback extraction path used
-when no LLM is configured (see src/extractors/kyc_extractor.py).
+`sniff_kyc` is a cheap upload-time presence check — it stays regex/text-match
+based since it's a validation check, not extraction.
 """
 
 from __future__ import annotations
 
 import io
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import pdfplumber
 
 from .base import ParserError
 
-# Every label on the page, in the order they appear. Matched by exact text
-# after joining a line's words with single spaces.
+# Labels used only for the upload-time "does this look like a KYC doc" sniff
+# check — matched verbatim against page-1 text.
 KNOWN_LABELS = (
     "FULL NAME",
     "DATE OF BIRTH",
@@ -47,8 +40,6 @@ KNOWN_LABELS = (
     "TENOR",
     "INDICATIVE RATE",
 )
-_COLUMN_SPLIT_X = 200.0  # left column x0 ~68, right column x0 ~297.6 (confirmed fixed across all sample apps)
-_ROW_CLUSTER_TOLERANCE = 3.0
 
 # Threshold for the upload-time "does this look like a KYC doc" sniff check
 # (out of len(KNOWN_LABELS) == 16). KYC uses a fraction-matched threshold
@@ -59,9 +50,8 @@ KYC_SNIFF_MIN_LABEL_MATCHES = 6
 
 def sniff_kyc(content: bytes) -> int:
     """Return how many KNOWN_LABELS appear verbatim in the first page's raw
-    text. Cheap presence check for upload-time document-type validation — no
-    column-splitting, no full parse. Never raises; returns 0 for unreadable
-    or non-PDF bytes."""
+    text. Cheap presence check for upload-time document-type validation. Never
+    raises; returns 0 for unreadable or non-PDF bytes."""
     try:
         with pdfplumber.open(io.BytesIO(content)) as pdf:
             if not pdf.pages:
@@ -75,39 +65,7 @@ def sniff_kyc(content: bytes) -> int:
 @dataclass
 class ParsedKycDocument:
     raw_text: str
-    label_value_pairs: dict[str, str] = field(default_factory=dict)
     source_file: str = ""
-
-
-def _extract_label_value_pairs(words: list[dict]) -> dict[str, str]:
-    rows: list[list[dict]] = []
-    for w in sorted(words, key=lambda w: (w["top"], w["x0"])):
-        if rows and abs(w["top"] - rows[-1][-1]["top"]) <= _ROW_CLUSTER_TOLERANCE:
-            rows[-1].append(w)
-        else:
-            rows.append([w])
-
-    lines: list[tuple[str, str]] = []
-    for row in rows:
-        left = " ".join(w["text"] for w in sorted(row, key=lambda w: w["x0"]) if w["x0"] < _COLUMN_SPLIT_X)
-        right = " ".join(w["text"] for w in sorted(row, key=lambda w: w["x0"]) if w["x0"] >= _COLUMN_SPLIT_X)
-        lines.append((left, right))
-
-    pairs: dict[str, str] = {}
-    pending_left: str | None = None
-    pending_right: str | None = None
-    for left, right in lines:
-        if left in KNOWN_LABELS:
-            pending_left = left
-        elif pending_left is not None:
-            pairs[pending_left] = left
-            pending_left = None
-        if right in KNOWN_LABELS:
-            pending_right = right
-        elif pending_right is not None:
-            pairs[pending_right] = right
-            pending_right = None
-    return pairs
 
 
 def parse_kyc_pdf(path: Path) -> ParsedKycDocument:
@@ -115,9 +73,7 @@ def parse_kyc_pdf(path: Path) -> ParsedKycDocument:
         with pdfplumber.open(path) as pdf:
             if not pdf.pages:
                 raise ParserError(f"{path} has no pages")
-            page = pdf.pages[0]
-            text = page.extract_text() or ""
-            label_value_pairs = _extract_label_value_pairs(page.extract_words())
+            text = pdf.pages[0].extract_text() or ""
     except ParserError:
         raise
     except Exception as exc:  # pdfplumber/pdfminer can raise several exception types
@@ -126,4 +82,4 @@ def parse_kyc_pdf(path: Path) -> ParsedKycDocument:
     if not text.strip():
         raise ParserError(f"KYC PDF {path} produced no extractable text")
 
-    return ParsedKycDocument(raw_text=text, label_value_pairs=label_value_pairs, source_file=str(path))
+    return ParsedKycDocument(raw_text=text, source_file=str(path))

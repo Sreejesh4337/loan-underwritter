@@ -1,6 +1,8 @@
-"""Unit tests for the deterministic parser layer, run against the real sample
-application packets in docs/applications/ — no LLM calls, no mocking needed
-since these parsers are pure functions over real files.
+"""Unit tests for the raw-text parser layer, run against the real sample
+application packets in docs/applications/ — no LLM calls needed, since these
+parsers only pull text out of PDFs/Excel (see src/parsers/base.py); turning
+that text into structured fields is the LLM extractor's job, tested in
+tests/unit/test_extractors.py.
 """
 
 from __future__ import annotations
@@ -45,40 +47,15 @@ class TestBankStatementParser:
     @pytest.mark.parametrize("app_id", ALL_APP_IDS)
     def test_parses_every_sample_app_without_error(self, app_id):
         result = parse_bank_statement(app_path(app_id, "bank_statement.pdf"))
-        assert len(result.transactions) > 0
-        # The only expected warning across the fixed sample set is the
-        # harmless trailing disclaimer line; anything else is a real bug.
-        for w in result.warnings:
-            assert "disclaimer" in w, f"unexpected warning for {app_id}: {w}"
+        assert result.raw_text.strip()
 
-    def test_reassembles_dates_wrapped_across_lines(self):
-        # Confirmed real quirk: "05 Aug" / body / "2025" span three physical lines.
+    def test_captures_transaction_table_content(self):
         result = parse_bank_statement_pdf(app_path("APP-001", "bank_statement.pdf"))
-        dates = [t.date_text for t in result.transactions]
-        assert "05 Aug 2025" in dates
+        assert "05 Aug" in result.raw_text or "05 Aug 2025" in result.raw_text
 
-    def test_preserves_negative_balances(self):
-        # Confirmed real quirk: heavy-spending months can drive the balance
-        # negative; those rows must not be mistaken for footer/disclaimer text.
-        result = parse_bank_statement_pdf(app_path("APP-004", "bank_statement.pdf"))
-        assert any(t.balance < 0 for t in result.transactions)
-
-    def test_captures_payment_return_transactions(self):
-        # APP-012 has 4 ECS returns in the sample data -> should decline per policy.
-        result = parse_bank_statement_pdf(app_path("APP-012", "bank_statement.pdf"))
-        returns = [t for t in result.transactions if "RETURN" in t.description.upper()]
-        assert len(returns) == 4
-
-    def test_captures_cash_deposit_transaction(self):
-        # APP-015 has an unexplained large cash deposit in the sample data.
-        result = parse_bank_statement_pdf(app_path("APP-015", "bank_statement.pdf"))
-        deposits = [t for t in result.transactions if "DEPOSIT" in t.description.upper()]
-        assert len(deposits) == 1
-        assert deposits[0].credit == pytest.approx(150000.0)
-
-    def test_ignores_trailing_disclaimer_line(self):
-        result = parse_bank_statement_pdf(app_path("APP-001", "bank_statement.pdf"))
-        assert not any("synthetic" in t.description.lower() for t in result.transactions)
+    def test_raises_on_missing_file(self):
+        with pytest.raises(ParserError):
+            parse_bank_statement_pdf(app_path("APP-001", "does_not_exist.pdf"))
 
 
 class TestIncomeParser:

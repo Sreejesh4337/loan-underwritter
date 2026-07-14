@@ -1,13 +1,20 @@
-"""Unit tests for the pure-Python financial metrics, checked against
-hand-computed values for the real APP-001 sample packet."""
+"""Unit tests for the pure-Python financial metrics.
+
+Transaction fixtures are built directly as `Transaction` objects (matching
+real values previously confirmed by direct inspection of the sample PDFs),
+rather than routed through the parser/extractor layer. That layer now
+involves an LLM call (see src/extractors/bank_statement_extractor.py) and is
+tested separately in tests/unit/test_extractors.py; these metric functions
+are pure Python and never cared how a transaction got its category, so they
+stay decoupled from extraction here.
+"""
 
 from __future__ import annotations
 
-from pathlib import Path
+from datetime import date, datetime
 
 import pytest
 
-from src.analysis.categorize import categorize_transaction, unmatched_descriptions
 from src.analysis.cross_check import check_salary_consistency, cross_check
 from src.analysis.metrics import (
     average_month_end_balance,
@@ -19,19 +26,13 @@ from src.analysis.metrics import (
     count_salary_credit_months,
     detect_recurring_emi,
     has_unexplained_cash_deposit,
-    to_transactions,
 )
-from src.parsers.bank_statement_parser import parse_bank_statement_pdf
-from src.parsers.income_parser import parse_income_xlsx
-from src.parsers.kyc_parser import parse_kyc_pdf
 from src.schemas.underwriting import EmploymentType, Transaction, TransactionCategory
 
 MONTHLY_TABLE_HEADER = ["Month", "Basic", "HRA", "Allowances", "Deductions", "Net pay (INR)"]
 
 
 def _salary_txn(month_label: str, amount: float) -> Transaction:
-    from datetime import datetime
-
     txn_date = datetime.strptime(f"05 {month_label}", "%d %b %Y").date()
     return Transaction(
         txn_date=txn_date,
@@ -41,13 +42,45 @@ def _salary_txn(month_label: str, amount: float) -> Transaction:
         category=TransactionCategory.SALARY,
     )
 
-APPS_DIR = Path(__file__).resolve().parents[2].parent / "docs" / "applications"
+
+def _return_txn(d: date, amount: float = 500.0) -> Transaction:
+    return Transaction(
+        txn_date=d,
+        description="ECS RETURN CHARGES - INSUFF FUNDS",
+        debit=amount,
+        balance=amount,
+        category=TransactionCategory.RETURN,
+    )
 
 
 @pytest.fixture
-def app001_transactions():
-    raw = parse_bank_statement_pdf(APPS_DIR / "APP-001" / "bank_statement.pdf").transactions
-    return to_transactions(raw)
+def app001_transactions() -> list[Transaction]:
+    """Matches APP-001's real bank statement (Jul-Dec 2025, salaried
+    applicant Rahul Mehta): monthly salary credit of 120,000, monthly EMI
+    debit of 8,000, and the month-end balances read directly off the PDF."""
+    month_end_balances = [27255.0, 35500.0, 40453.0, 43983.0, 46169.0, 52718.0]
+    transactions = []
+    for i, balance in enumerate(month_end_balances):
+        month = 7 + i  # Jul .. Dec 2025
+        transactions.append(
+            Transaction(
+                txn_date=date(2025, month, 5),
+                description="Salary Credit - EMP PAYROLL",
+                credit=120000.0,
+                balance=balance,
+                category=TransactionCategory.SALARY,
+            )
+        )
+        transactions.append(
+            Transaction(
+                txn_date=date(2025, month, 20),
+                description="ACH Debit - EXISTING LOAN EMI",
+                debit=8000.0,
+                balance=balance,  # last transaction of the month -> this is the balance that counts
+                category=TransactionCategory.EMI,
+            )
+        )
+    return sorted(transactions, key=lambda t: t.txn_date)
 
 
 class TestEmiAndFoir:
@@ -83,12 +116,6 @@ class TestCategorization:
         assert len(emi_txns) == 6
         assert all(t.debit == 8000 for t in emi_txns)
 
-    def test_unmatched_descriptions_excludes_known_categories(self, app001_transactions):
-        raw = parse_bank_statement_pdf(APPS_DIR / "APP-001" / "bank_statement.pdf").transactions
-        unmatched = unmatched_descriptions(raw)
-        assert not any("SALARY" in d.upper() for d in unmatched)
-        assert not any("EMI" in d.upper() for d in unmatched)
-
 
 class TestBalanceAndCounts:
     def test_average_month_end_balance_matches_hand_computed(self, app001_transactions):
@@ -102,24 +129,39 @@ class TestBalanceAndCounts:
         assert count_payment_returns(app001_transactions) == 0
 
     def test_payment_returns_count_matches_app012(self):
-        raw = parse_bank_statement_pdf(APPS_DIR / "APP-012" / "bank_statement.pdf").transactions
-        txns = to_transactions(raw)
-        assert count_payment_returns(txns) == 4  # confirmed via direct inspection -> should decline
+        # APP-012 has 4 ECS returns in the sample data -> should decline per policy.
+        txns = [_return_txn(date(2025, m, 15)) for m in range(7, 11)]
+        assert count_payment_returns(txns) == 4
 
     def test_recurring_emi_detected(self, app001_transactions):
         assert detect_recurring_emi(app001_transactions) == pytest.approx(8000.0)
 
     def test_no_recurring_emi_returns_zero(self):
-        raw = parse_bank_statement_pdf(APPS_DIR / "APP-014" / "bank_statement.pdf").transactions
-        txns = to_transactions(raw)
-        # APP-014 is self-employed; just verify the function degrades gracefully either way
+        # APP-014 is self-employed with no recurring EMI in the sample data.
+        txns = [
+            Transaction(
+                txn_date=date(2025, 7, 10),
+                description="Declared Business Income",
+                credit=45000.0,
+                balance=45000.0,
+                category=TransactionCategory.OTHER,
+            )
+        ]
         assert detect_recurring_emi(txns) >= 0.0
 
 
 class TestUnexplainedCashDeposit:
     def test_app015_flags_large_cash_deposit(self):
-        raw = parse_bank_statement_pdf(APPS_DIR / "APP-015" / "bank_statement.pdf").transactions
-        txns = to_transactions(raw)
+        # APP-015 has an unexplained large cash deposit in the sample data.
+        txns = [
+            Transaction(
+                txn_date=date(2025, 8, 12),
+                description="CASH DEPOSIT - BRANCH",
+                credit=150000.0,
+                balance=150000.0,
+                category=TransactionCategory.CASH_DEPOSIT,
+            )
+        ]
         assert has_unexplained_cash_deposit(txns, net_monthly_income=90000) is True
 
     def test_app001_has_no_unexplained_deposit(self, app001_transactions):
@@ -128,8 +170,15 @@ class TestUnexplainedCashDeposit:
 
 class TestSelfEmployedIncomeSource:
     def test_average_monthly_bank_credits_positive(self):
-        raw = parse_bank_statement_pdf(APPS_DIR / "APP-014" / "bank_statement.pdf").transactions
-        txns = to_transactions(raw)
+        txns = [
+            Transaction(
+                txn_date=date(2025, 7, 10),
+                description="Business Credit",
+                credit=45000.0,
+                balance=45000.0,
+                category=TransactionCategory.OTHER,
+            )
+        ]
         assert average_monthly_bank_credits(txns) > 0
 
 

@@ -1,70 +1,83 @@
-"""Bank statement extraction — deliberately narrow.
+"""Bank statement extraction.
 
-Transaction rows are parsed 100% in code. The LLM call only handles
-classifying transaction descriptions that don't match a known regex
-category, batched as ONE call for every unique unmatched description.
+One structured-output LLM call per document (never per transaction row,
+consistent with the project's cost-minimization principle) that extracts the
+account holder/type from the header block and every transaction row (date,
+description, debit, credit, balance, category) from the table in one shot.
 Requires OPENAI_API_KEY to be set in .env.
 """
 
 from __future__ import annotations
 
 import logging
-import re
+from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.llm.models import CHEAP_MODEL_NAME, get_cheap_model
 from src.llm.pricing import estimate_cost_usd
 from src.parsers.bank_statement_parser import ParsedBankStatement
-from src.schemas.underwriting import StepUsage, TransactionCategory
+from src.schemas.underwriting import StepUsage, Transaction, TransactionCategory
 
 logger = logging.getLogger(__name__)
 
-_HEADER_RE = re.compile(r"ACCOUNT HOLDER ACCOUNT TYPE\n(.+?)\s+(Savings|Current)\b", re.IGNORECASE)
 
-
-def extract_account_holder(parsed: ParsedBankStatement) -> tuple[str | None, str | None]:
-    match = _HEADER_RE.search(parsed.header_text)
-    if not match:
-        return None, None
-    return match.group(1).strip(), match.group(2).strip()
-
-
-class ClassificationItem(BaseModel):
+class _TransactionItem(BaseModel):
+    date: str = Field(description="ISO format YYYY-MM-DD")
     description: str
-    category: str
+    debit: float = 0.0
+    credit: float = 0.0
+    balance: float
+    category: str = Field(description="one of: salary, emi, return, cash_deposit, other")
 
 
-class _ClassificationSchema(BaseModel):
-    classifications: list[ClassificationItem]
+class _BankStatementExtractionSchema(BaseModel):
+    account_holder: str
+    account_type: str
+    transactions: list[_TransactionItem]
 
 
-def classify_unmatched_descriptions(descriptions: list[str]) -> tuple[dict[str, TransactionCategory], StepUsage]:
-    """One batched cheap-model call classifying every description that fell
-    through the regex categorizer, never one call per transaction row."""
-    if not descriptions:
-        return {}, StepUsage(step="extract_bank_statement", model="none (no unmatched descriptions)")
-
-    model = get_cheap_model().with_structured_output(_ClassificationSchema, include_raw=True)
+def extract_bank_statement(parsed: ParsedBankStatement) -> tuple[str | None, str | None, list[Transaction], StepUsage]:
+    model = get_cheap_model().with_structured_output(_BankStatementExtractionSchema, include_raw=True)
     categories = ", ".join(c.value for c in TransactionCategory)
     prompt = (
-        f"Classify each bank transaction description into exactly one of: {categories}. "
-        "Return a list containing the original description (verbatim) and its category.\n\n"
-        + "\n".join(descriptions)
+        "Extract structured data from this bank statement.\n\n"
+        "First, identify the account holder's name and account type (e.g. Savings/Current) "
+        "from the header block.\n\n"
+        "Then extract every transaction row from the table, in order: date (ISO format "
+        "YYYY-MM-DD), description (verbatim), debit amount (0 if none), credit amount (0 if "
+        "none), and the running balance after that transaction. Ignore any footer/disclaimer "
+        "text that is not a transaction row.\n\n"
+        f"For each transaction, also classify its description into exactly one of: {categories}. "
+        'Use "salary" for salary/payroll credits, "emi" for loan EMI debits, "return" for '
+        'bounced/returned/insufficient-funds transactions, "cash_deposit" for cash deposits, and '
+        '"other" for anything else.\n\n'
+        f"{parsed.raw_text}"
     )
     result = model.invoke(prompt)
-    extraction: _ClassificationSchema = result["parsed"]
-    usage_meta = getattr(result["raw"], "usage_metadata", None) or {}
+    extraction: _BankStatementExtractionSchema = result["parsed"]
+    raw_message = result["raw"]
+    usage_meta = getattr(raw_message, "usage_metadata", None) or {}
     input_tokens = usage_meta.get("input_tokens", 0)
     output_tokens = usage_meta.get("output_tokens", 0)
 
-    classifications = {
-        item.description: TransactionCategory(item.category)
-        for item in extraction.classifications
-        if item.description in descriptions
-    }
-    for d in descriptions:
-        classifications.setdefault(d, TransactionCategory.OTHER)
+    transactions = []
+    for item in extraction.transactions:
+        try:
+            category = TransactionCategory(item.category.strip().lower())
+        except ValueError:
+            category = TransactionCategory.OTHER
+        transactions.append(
+            Transaction(
+                txn_date=datetime.strptime(item.date.strip(), "%Y-%m-%d").date(),
+                description=item.description,
+                debit=item.debit,
+                credit=item.credit,
+                balance=item.balance,
+                category=category,
+            )
+        )
+    transactions.sort(key=lambda t: t.txn_date)
 
     usage = StepUsage(
         step="extract_bank_statement",
@@ -73,4 +86,4 @@ def classify_unmatched_descriptions(descriptions: list[str]) -> tuple[dict[str, 
         output_tokens=output_tokens,
         cost_usd=estimate_cost_usd(CHEAP_MODEL_NAME, input_tokens, output_tokens),
     )
-    return classifications, usage
+    return extraction.account_holder or None, extraction.account_type or None, transactions, usage

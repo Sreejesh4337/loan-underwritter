@@ -16,16 +16,15 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from src.analysis.cross_check import check_name_consistency, cross_check
-from src.analysis.metrics import compute_metrics, to_transactions
-from src.extractors.bank_statement_extractor import classify_unmatched_descriptions, extract_account_holder
+from src.analysis.cross_check import cross_check
+from src.analysis.metrics import compute_metrics
+from src.extractors.bank_statement_extractor import extract_bank_statement
 from src.extractors.income_extractor import extract_income
 from src.extractors.kyc_extractor import extract_kyc
-from src.analysis.categorize import unmatched_descriptions
 from src.graph.state import UnderwritingState, new_step_status
 from src.llm.models import get_strong_model
 from src.llm.pricing import estimate_cost_usd
-from src.parsers.bank_statement_parser import ParsedBankStatement, RawTransactionRow
+from src.parsers.bank_statement_parser import ParsedBankStatement
 from src.parsers.base import ParserError
 from src.parsers.income_parser import ParsedIncomeDocument
 from src.parsers.kyc_parser import ParsedKycDocument
@@ -133,29 +132,9 @@ def route_after_plan(state: UnderwritingState) -> str:
 import tempfile
 
 
-def _check_parsed_document_identity(parsed: dict) -> str | None:
-    """Deterministic, pre-extraction identity check: reads the applicant name
-    straight off each parser's output (no LLM call needed for any of the
-    three) and returns an error message if they don't match, else None."""
-    kyc_name = parsed["kyc"].get("label_value_pairs", {}).get("FULL NAME")
-    income_name = parsed["income"].get("header_fields", {}).get("Applicant")
-    bank_name, _account_type = extract_account_holder(
-        ParsedBankStatement(header_text=parsed["bank_statement"]["header_text"], transactions=[], warnings=[], source_file="")
-    )
-    if not (kyc_name and income_name and bank_name):
-        return None
-    name_ok, name_error = check_name_consistency(
-        kyc_full_name=kyc_name,
-        income_sheet_applicant_name=income_name,
-        bank_account_holder_name=bank_name,
-    )
-    return None if name_ok else name_error
-
-
 def parse_documents_node(state: UnderwritingState) -> dict:
     step_status = _mark_running(state, "parse_documents")
     parsed: dict = {}
-    warnings: dict[str, list[str]] = {}
     errors = []
 
     from src.db import get_document
@@ -183,18 +162,9 @@ def parse_documents_node(state: UnderwritingState) -> dict:
         errors.append({"node": "parse_documents", "message": f"income: {exc}"})
 
     try:
-        bs_doc_dict = _parse_with_temp("bank_statement", parse_bank_statement)
-        parsed["bank_statement"] = bs_doc_dict
-        warnings["bank_statement"] = bs_doc_dict["warnings"]
+        parsed["bank_statement"] = _parse_with_temp("bank_statement", parse_bank_statement)
     except ParserError as exc:
         errors.append({"node": "parse_documents", "message": f"bank_statement: {exc}"})
-
-    if not errors:
-        # Reject a cross-applicant document mix before spending any LLM tokens
-        # on extraction.
-        identity_error = _check_parsed_document_identity(parsed)
-        if identity_error:
-            errors.append({"node": "parse_documents", "message": identity_error})
 
     run_status = "failed_input" if errors else state["run_status"]
     step_status = _mark_done(step_status, "parse_documents", error="; ".join(e["message"] for e in errors) or None)
@@ -255,19 +225,9 @@ def extract_income_node(state: UnderwritingState) -> dict:
 def extract_bank_statement_node(state: UnderwritingState) -> dict:
     step_status = _mark_running(state, "extract_bank_statement")
     d = state["parsed"]["bank_statement"]
-    raw_rows = [RawTransactionRow(**row) for row in d["transactions"]]
-    doc = ParsedBankStatement(header_text=d["header_text"], transactions=raw_rows, warnings=d["warnings"], source_file=d["source_file"])
+    doc = ParsedBankStatement(raw_text=d["raw_text"], source_file=d["source_file"])
 
-    account_holder, account_type = extract_account_holder(doc)
-    transactions = to_transactions(raw_rows)  # already categorized via regex
-
-    unmatched = unmatched_descriptions(raw_rows)
-    classifications, usage = classify_unmatched_descriptions(unmatched)
-    if classifications:
-        transactions = [
-            t.model_copy(update={"category": classifications[t.description]}) if t.description in classifications else t
-            for t in transactions
-        ]
+    account_holder, account_type, transactions, usage = extract_bank_statement(doc)
 
     extracted_bank_statement = {
         "account_holder": account_holder,

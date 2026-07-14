@@ -10,35 +10,10 @@ node calls.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from datetime import date, datetime
 
-from src.analysis.categorize import categorize_transaction
-from src.parsers.bank_statement_parser import RawTransactionRow
 from src.schemas.underwriting import EmploymentType, FinancialMetrics, Transaction, TransactionCategory
 
 _UNEXPLAINED_CREDIT_CATEGORIES = {TransactionCategory.CASH_DEPOSIT, TransactionCategory.OTHER}
-
-
-def parse_transaction_date(date_text: str) -> date:
-    return datetime.strptime(date_text.strip(), "%d %b %Y").date()
-
-
-def to_transactions(raw_rows: list[RawTransactionRow]) -> list[Transaction]:
-    """Convert parser output into the typed, categorized, chronologically
-    sorted Transaction list used by every metric below."""
-    transactions = [
-        Transaction(
-            txn_date=parse_transaction_date(row.date_text),
-            description=row.description,
-            debit=row.debit,
-            credit=row.credit,
-            balance=row.balance,
-            category=categorize_transaction(row),
-        )
-        for row in raw_rows
-        if row.date_text
-    ]
-    return sorted(transactions, key=lambda t: t.txn_date)
 
 
 def calculate_emi(principal: float, annual_rate_pct: float, tenor_months: int) -> float:

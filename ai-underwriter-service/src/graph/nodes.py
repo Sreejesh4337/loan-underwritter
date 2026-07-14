@@ -17,9 +17,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from src.analysis.cross_check import check_name_consistency, cross_check
-from src.analysis.metrics import compute_metrics, to_transactions
+from src.analysis.metrics import compute_metrics
 from src.db import save_applicant_profile, save_salary_credits
-from src.extractors.bank_statement_extractor import classify_unmatched_descriptions, extract_account_holder
+from src.extractors.bank_statement_extractor import extract_bank_statement
 from src.extractors.income_extractor import extract_income
 from src.extractors.kyc_extractor import extract_kyc
 from src.graph.state import UnderwritingState, new_step_status
@@ -415,6 +415,7 @@ def decide_node(state: UnderwritingState) -> dict:
         "Do not propose a different decision. Write 2-4 sentences explaining the "
         "decision in plain English, citing the rule IDs and figures below, plus up to "
         "3 short advisory notes (qualitative observations, not new rules).\n\n"
+        "CRITICAL: Format all currency values using 'INR' (e.g., INR 150,000). Never use the $ or ₹ symbols.\n\n"
         f"Metrics: {json.dumps(state['metrics'])}\n"
         f"Fired rules: {json.dumps(fired_rules)}\n"
         f"Cross-check: {json.dumps(state['cross_check'])}\n\n"

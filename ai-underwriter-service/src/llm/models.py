@@ -28,7 +28,7 @@ NODE_MODEL_MAP = {
     "extract_kyc": "cheap",
     "extract_bank_statement": "cheap",
     "merge_and_cross_check": "cheap",  # only for the optional large-deposit materiality judgment
-    "decide": "strong",
+    "llm_evaluate_policy": "strong",   # reads policy YAML + metrics → decision + rationale
 }
 
 

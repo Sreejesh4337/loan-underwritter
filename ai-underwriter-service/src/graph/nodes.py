@@ -32,6 +32,7 @@ from src.parsers.kyc_parser import ParsedKycDocument
 from src.parsers.registry import parse_bank_statement, parse_income, parse_kyc
 from src.policy_engine.engine import evaluate as evaluate_policy
 from src.policy_engine.loader import DEFAULT_POLICY_PATH, load_policy, policy_file_hash
+from src.policy_engine.llm_engine import evaluate_with_llm
 from src.schemas.underwriting import (
     Applicant,
     CreditBureau,
@@ -104,8 +105,7 @@ def plan_node(state: UnderwritingState) -> dict:
         {"node": "extract_kyc / extract_income / extract_bank_statement", "reason": "pull structured fields per document (parallel, cheap model)"},
         {"node": "merge_and_cross_check", "reason": "reconcile documents, pick net-income source"},
         {"node": "compute_metrics", "reason": "EMI/FOIR/balance/etc — pure Python, no LLM"},
-        {"node": "evaluate_policy", "reason": "apply lending_policy.yaml deterministically"},
-        {"node": "decide", "reason": "author the rationale narrative (strong model)"},
+        {"node": "llm_evaluate_policy", "reason": "LLM reads lending_policy.yaml + metrics, produces decision + rules + rationale (strong model, with deterministic fallback)"},
         {"node": "generate_outputs", "reason": "memo PDF + cash-flow Excel + decision.json"},
     ]
 
@@ -373,88 +373,102 @@ def compute_metrics_node(state: UnderwritingState) -> dict:
 
 
 # --------------------------------------------------------------------------
-# evaluate_policy (zero LLM calls)
+# llm_evaluate_policy (LLM reads policy YAML + metrics → decision + rationale)
+# Falls back to deterministic engine.py if LLM call fails.
 # --------------------------------------------------------------------------
 
 
-def evaluate_policy_node(state: UnderwritingState) -> dict:
-    step_status = _mark_running(state, "evaluate_policy")
+def llm_evaluate_policy_node(state: UnderwritingState) -> dict:
+    """Combined policy evaluation + rationale generation via LLM.
+
+    The strong model receives the full lending_policy.yaml and the applicant's
+    financial metrics, then produces the decision, fired rules, rationale, and
+    advisory notes in a single structured call.
+
+    If the LLM call fails for any reason (network, parsing, API error), we
+    fall back to the old deterministic engine + a minimal rationale.
+    """
+    step_status = _mark_running(state, "llm_evaluate_policy")
     metrics = FinancialMetrics(**state["metrics"])
     credit_score = state["extracted_kyc"]["credit_bureau"]["credit_score"]
+    cross_check_data = state.get("cross_check")
 
-    result = evaluate_policy(metrics, credit_score, DEFAULT_POLICY_PATH)
-
-    step_status = _mark_done(step_status, "evaluate_policy")
-    return {
-        "policy_result": {
-            "decision": result.decision.value,
-            "fired_rules": [r.model_dump(mode="json") for r in result.fired_rules],
-            "override_applied": result.override_applied,
-            "policy_file_hash": policy_file_hash(),
-        },
-        "step_status": step_status,
-        "updated_at": _now(),
-    }
-
-
-# --------------------------------------------------------------------------
-# decide (strong model) — narrative + advisory notes only, never the decision
-# --------------------------------------------------------------------------
-
-
-def decide_node(state: UnderwritingState) -> dict:
-    step_status = _mark_running(state, "decide")
-    policy_result = state["policy_result"]
-    decision = policy_result["decision"]
-    fired_rules = policy_result["fired_rules"]
-
-    model = get_strong_model()
-    prompt = (
-        "You are writing the rationale section of an underwriting memo. The decision "
-        f"has ALREADY been made by a deterministic policy engine: {decision.upper()}. "
-        "Do not propose a different decision. Write 2-4 sentences explaining the "
-        "decision in plain English, citing the rule IDs and figures below, plus up to "
-        "3 short advisory notes (qualitative observations, not new rules).\n\n"
-        "CRITICAL: Format all currency values using 'INR' (e.g., INR 150,000). Never use the $ or ₹ symbols.\n\n"
-        f"Metrics: {json.dumps(state['metrics'])}\n"
-        f"Fired rules: {json.dumps(fired_rules)}\n"
-        f"Cross-check: {json.dumps(state['cross_check'])}\n\n"
-        'Respond as JSON: {"rationale_text": "...", "advisory_notes": ["...", ...]}'
-    )
-    response = model.invoke(prompt)
-    usage_meta = getattr(response, "usage_metadata", None) or {}
-    input_tokens = usage_meta.get("input_tokens", 0)
-    output_tokens = usage_meta.get("output_tokens", 0)
-
-    # Safely strip markdown code blocks before JSON parsing
-    content = response.content.strip()
-    if content.startswith("```json"):
-        content = content.split("```json", 1)[1]
-    if content.endswith("```"):
-        content = content.rsplit("```", 1)[0]
-    content = content.strip()
-
-    try:
-        payload = json.loads(content)
-    except json.JSONDecodeError as exc:
-        logger.error(f"Failed to parse LLM JSON decision: {exc}. Content was: {content}")
-        payload = {}
-
-    rationale_text = payload.get("rationale_text", f"Recommendation is {decision.upper()}")
-    advisory_notes = payload.get("advisory_notes", [])
     from src.llm.models import STRONG_MODEL_NAME
 
-    usage = StepUsage(
-        step="decide",
-        model=STRONG_MODEL_NAME,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        cost_usd=estimate_cost_usd(STRONG_MODEL_NAME, input_tokens, output_tokens),
-    )
+    try:
+        evaluation, usage_info = evaluate_with_llm(
+            metrics=metrics,
+            credit_score=credit_score,
+            cross_check=cross_check_data,
+            policy_path=DEFAULT_POLICY_PATH,
+        )
 
-    step_status = _mark_done(step_status, "decide")
+        policy_result = {
+            "decision": evaluation.decision.value,
+            "fired_rules": [r.model_dump(mode="json") for r in evaluation.fired_rules],
+            "override_applied": evaluation.override_applied,
+            "policy_file_hash": policy_file_hash(),
+        }
+        decision_data = {
+            "rationale_text": evaluation.rationale_text,
+            "advisory_notes": evaluation.advisory_notes,
+        }
+
+        usage = StepUsage(
+            step="llm_evaluate_policy",
+            model=usage_info.get("model", STRONG_MODEL_NAME),
+            input_tokens=usage_info.get("input_tokens", 0),
+            output_tokens=usage_info.get("output_tokens", 0),
+            cost_usd=estimate_cost_usd(
+                usage_info.get("model", STRONG_MODEL_NAME),
+                usage_info.get("input_tokens", 0),
+                usage_info.get("output_tokens", 0),
+            ),
+        )
+
+        logger.info(
+            "LLM policy evaluation succeeded for run %s: decision=%s",
+            state.get("run_id", "?"),
+            evaluation.decision.value,
+        )
+
+    except Exception as exc:
+        # --- FALLBACK to deterministic engine ---
+        logger.warning(
+            "LLM policy evaluation failed for run %s, falling back to "
+            "deterministic engine: %s",
+            state.get("run_id", "?"),
+            exc,
+        )
+
+        det_result = evaluate_policy(metrics, credit_score, DEFAULT_POLICY_PATH)
+
+        policy_result = {
+            "decision": det_result.decision.value,
+            "fired_rules": [r.model_dump(mode="json") for r in det_result.fired_rules],
+            "override_applied": det_result.override_applied,
+            "policy_file_hash": policy_file_hash(),
+        }
+        decision_data = {
+            "rationale_text": (
+                f"Recommendation is {det_result.decision.value.upper()} "
+                f"(determined by deterministic fallback due to LLM error: {exc})"
+            ),
+            "advisory_notes": [],
+        }
+
+        usage = StepUsage(
+            step="llm_evaluate_policy",
+            model="deterministic_fallback",
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+        )
+
+    step_status = _mark_done(step_status, "llm_evaluate_policy")
     return {
-        "decision": {"rationale_text": rationale_text, "advisory_notes": advisory_notes},
+        "policy_result": policy_result,
+        "decision": decision_data,
         "step_status": step_status,
         "token_usage": [usage.model_dump()],
         "updated_at": _now(),

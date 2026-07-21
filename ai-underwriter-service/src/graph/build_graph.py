@@ -4,7 +4,7 @@ CLI, the FastAPI service, and the eval harness.
 Graph topology (see the project plan for the full rationale):
 
     plan -> parse_documents -> [extract_kyc | extract_income | extract_bank_statement]
-         -> merge_and_cross_check -> compute_metrics -> evaluate_policy -> decide
+         -> merge_and_cross_check -> compute_metrics -> llm_evaluate_policy
          -> generate_outputs -> done
 
 with a conditional escape to handle_bad_input from `plan` or `parse_documents`
@@ -35,8 +35,7 @@ def _build_graph() -> StateGraph:
     g.add_node("extract_bank_statement", nodes.extract_bank_statement_node)
     g.add_node("merge_and_cross_check", nodes.merge_and_cross_check_node)
     g.add_node("compute_metrics", nodes.compute_metrics_node)
-    g.add_node("evaluate_policy", nodes.evaluate_policy_node)
-    g.add_node("decide", nodes.decide_node)
+    g.add_node("llm_evaluate_policy", nodes.llm_evaluate_policy_node)
     g.add_node("generate_outputs", nodes.generate_outputs_node)
     g.add_node("done", nodes.done_node)
     g.add_node("handle_bad_input", nodes.handle_bad_input_node)
@@ -52,9 +51,8 @@ def _build_graph() -> StateGraph:
     g.add_edge("extract_income", "merge_and_cross_check")
     g.add_edge("extract_bank_statement", "merge_and_cross_check")
     g.add_edge("merge_and_cross_check", "compute_metrics")
-    g.add_edge("compute_metrics", "evaluate_policy")
-    g.add_edge("evaluate_policy", "decide")
-    g.add_edge("decide", "generate_outputs")
+    g.add_edge("compute_metrics", "llm_evaluate_policy")
+    g.add_edge("llm_evaluate_policy", "generate_outputs")
     g.add_edge("generate_outputs", "done")
     g.add_edge("done", END)
     g.add_edge("handle_bad_input", END)

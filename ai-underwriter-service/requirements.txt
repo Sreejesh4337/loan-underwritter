@@ -11,3 +11,5 @@ pypdf
 reportlab
 pyyaml
 langgraph-checkpoint-sqlite
+langfuse
+langchain

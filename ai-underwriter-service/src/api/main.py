@@ -69,20 +69,41 @@ def _next_application_id() -> str:
     return f"APP-{next_num:03d}"
 
 
+from langfuse.langchain import CallbackHandler
+from langfuse import propagate_attributes, get_client
+
 def _execute(application_id: str, run_id: str, thread_id: str, resume: bool) -> None:
-    graph = compile_graph(DEFAULT_CHECKPOINT_DB)
-    config = {"configurable": {"thread_id": thread_id}}
     try:
-        if resume:
-            final_state = graph.invoke(None, config=config)
+        langfuse_handler = CallbackHandler()
+    except Exception as e:
+        print(f"Warning: Langfuse init failed (check API keys): {e}")
+        langfuse_handler = None
+
+    graph = compile_graph(DEFAULT_CHECKPOINT_DB)
+    
+    config = {"configurable": {"thread_id": thread_id}}
+    if langfuse_handler:
+        config["callbacks"] = [langfuse_handler]
+
+    try:
+        def _invoke_graph():
+            if resume:
+                return graph.invoke(None, config=config)
+            else:
+                initial_state = {
+                    "application_id": application_id,
+                    "run_id": run_id,
+                    "thread_id": thread_id,
+                    "input_paths": {}, # Removed logic expecting paths
+                }
+                return graph.invoke(initial_state, config=config)
+
+        if langfuse_handler:
+            with propagate_attributes(session_id=application_id, tags=["underwriting-pipeline"]):
+                final_state = _invoke_graph()
         else:
-            initial_state = {
-                "application_id": application_id,
-                "run_id": run_id,
-                "thread_id": thread_id,
-                "input_paths": {}, # Removed logic expecting paths
-            }
-            final_state = graph.invoke(initial_state, config=config)
+            final_state = _invoke_graph()
+
         status = final_state.get("run_status", "failed")
         run_error = None
         if status == "failed_input":
@@ -98,6 +119,12 @@ def _execute(application_id: str, run_id: str, thread_id: str, resume: bool) -> 
                 "created_at": _now(),
             }
         )
+
+        if langfuse_handler:
+            langfuse_client = get_client()
+            if langfuse_client:
+                langfuse_client.flush()
+
     except Exception as exc:
         append_run(
             {

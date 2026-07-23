@@ -119,6 +119,10 @@ actually fired (fired=True).
 6. Write a 2-4 sentence rationale and up to 3 advisory notes.
 
 CRITICAL RULES:
+- IMPORTANT: Before deciding if a quantitative rule fires, you MUST think step-by-step \
+and explicitly write out the math in the `message` field. For example, for the bank \
+balance rule, explicitly calculate: "Average bank balance is X, 1.0x EMI is Y. Is X < Y? False, \
+so this rule does not fire."
 - Format all currency values using 'INR' (e.g., INR 150,000). Never use $ or ₹.
 - A DECLINE decision requires at least one decline-tier rule to fire.
 - A REFER decision requires at least one refer-tier rule to fire (fired=True).

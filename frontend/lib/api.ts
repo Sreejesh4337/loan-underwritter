@@ -22,6 +22,33 @@ export class DocumentValidationError extends Error {
   }
 }
 
+/**
+ * Per-document details returned when the backend detects a duplicate
+ * within the cooldown window (HTTP 409).
+ */
+export interface DuplicateDetail {
+  previous_application_id: string;
+  processed_at: string;
+  cooldown_until: string;
+  days_remaining: number;
+}
+
+/**
+ * Thrown when the backend rejects an upload because one or more documents
+ * were already processed within the cooldown period.
+ * `duplicates` is keyed by backend field names:
+ * "bank_statement" | "kyc_and_credit" | "income_details".
+ */
+export class DuplicateCooldownError extends Error {
+  duplicates: Record<string, DuplicateDetail>;
+
+  constructor(message: string, duplicates: Record<string, DuplicateDetail>) {
+    super(message);
+    this.name = "DuplicateCooldownError";
+    this.duplicates = duplicates;
+  }
+}
+
 export interface StepStatusEntry {
   status: string; // "pending" | "running" | "done" | "failed"
   attempt_count: number;
@@ -108,6 +135,13 @@ export async function uploadAndRun(files: {
       throw new DocumentValidationError(
         detail.message || "Document validation failed.",
         detail.errors
+      );
+    }
+
+    if (res.status === 409 && detail && typeof detail === "object" && detail.duplicates) {
+      throw new DuplicateCooldownError(
+        detail.message || "Document(s) already processed within the cooldown period.",
+        detail.duplicates
       );
     }
 

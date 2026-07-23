@@ -70,3 +70,13 @@ class SalaryCreditResponse(BaseModel):
     description: str | None = None
     credit_amount: float | None = None
     balance: float | None = None
+
+
+class DuplicateDocumentInfo(BaseModel):
+    """Detail for a single document that is within the cooldown window."""
+
+    doc_type: str
+    previous_application_id: str
+    processed_at: str
+    cooldown_until: str
+    days_remaining: int

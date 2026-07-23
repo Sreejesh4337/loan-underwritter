@@ -4,8 +4,10 @@ Replaces the local filesystem JSONL registry and blob storage.
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import threading
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -87,6 +89,25 @@ def _init_db() -> None:
                 """
                 CREATE INDEX IF NOT EXISTS idx_applicant_profiles_application_id
                 ON applicant_profiles(application_id)
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS document_fingerprints (
+                    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_hash      TEXT NOT NULL,
+                    doc_type       TEXT NOT NULL,
+                    application_id TEXT NOT NULL,
+                    run_id         TEXT NOT NULL,
+                    processed_at   TEXT NOT NULL,
+                    cooldown_until TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_fingerprints_hash
+                ON document_fingerprints(file_hash)
                 """
             )
             conn.execute(
@@ -265,3 +286,58 @@ def get_salary_credits_by_run_id(run_id: str) -> list[dict[str, Any]]:
             "SELECT * FROM salary_credits WHERE run_id = ? ORDER BY txn_date DESC", (run_id,)
         )
         return [dict(row) for row in cur.fetchall()]
+
+
+# ---------------------------------------------------------------------------
+# Document deduplication / cooldown
+# ---------------------------------------------------------------------------
+
+
+def _get_cooldown_days() -> int:
+    """Return the configurable cooldown period in days (default: 90)."""
+    return int(os.getenv("DOCUMENT_COOLDOWN_DAYS", "90"))
+
+
+def check_document_cooldown(file_hash: str, doc_type: str) -> dict[str, Any] | None:
+    """Return the existing fingerprint record if this hash+doc_type was
+    processed within the cooldown window, else None (clear to proceed)."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.execute(
+            """
+            SELECT * FROM document_fingerprints
+            WHERE file_hash = ? AND doc_type = ? AND cooldown_until > ?
+            ORDER BY processed_at DESC
+            LIMIT 1
+            """,
+            (file_hash, doc_type, now_iso),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def save_document_fingerprint(
+    file_hash: str, doc_type: str, application_id: str, run_id: str
+) -> None:
+    """Persist a fingerprint after a successful pipeline run."""
+    now = datetime.now(timezone.utc)
+    cooldown_until = now + timedelta(days=_get_cooldown_days())
+    with _lock:
+        with get_conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO document_fingerprints
+                    (file_hash, doc_type, application_id, run_id, processed_at, cooldown_until)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    file_hash,
+                    doc_type,
+                    application_id,
+                    run_id,
+                    now.isoformat(),
+                    cooldown_until.isoformat(),
+                ),
+            )
+            conn.commit()

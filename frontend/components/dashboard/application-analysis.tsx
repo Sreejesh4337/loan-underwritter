@@ -9,8 +9,10 @@ import {
   getMemoUrl,
   getCashflowUrl,
   DocumentValidationError,
+  DuplicateCooldownError,
   type DecisionResponse,
   type RunStatusResponse,
+  type DuplicateDetail,
 } from "@/lib/api";
 import { ApplicantProfileCard } from "@/components/dashboard/applicant-profile-card";
 import { SalaryCreditsTable } from "@/components/dashboard/salary-credits-table";
@@ -111,6 +113,9 @@ export function ApplicationAnalysis({
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<UploadId, string>>
   >({});
+  const [cooldownDuplicates, setCooldownDuplicates] = useState<
+    Record<string, DuplicateDetail> | null
+  >(null);
 
   // Polling ref
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -256,6 +261,11 @@ export function ApplicationAnalysis({
           setCurrentStep("upload");
           onStepChange?.("upload");
           onPipelineChange?.({ analysis: "pending", decision: "pending" });
+        } else if (err instanceof DuplicateCooldownError) {
+          setCooldownDuplicates(err.duplicates);
+          setCurrentStep("upload");
+          onStepChange?.("upload");
+          onPipelineChange?.({ analysis: "pending", decision: "pending" });
         } else {
           setErrorMessage(
             err instanceof Error ? err.message : "Upload failed"
@@ -299,6 +309,60 @@ export function ApplicationAnalysis({
 
   return (
     <>
+      {/* Cooldown Duplicate Warning Panel */}
+      {cooldownDuplicates && currentStep === "upload" && (
+        <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 mb-4 animate-in fade-in zoom-in-95 duration-500">
+          <div className="flex items-center gap-3 mb-3">
+            <span className="material-symbols-outlined text-[28px] text-amber-600">
+              schedule
+            </span>
+            <div>
+              <h3 className="text-base font-semibold leading-6 text-amber-800">
+                Document Cooldown Active
+              </h3>
+              <p className="text-[13px] text-amber-700">
+                One or more documents were already processed recently. Please wait for the cooldown period to expire or upload different documents.
+              </p>
+            </div>
+          </div>
+          <div className="space-y-2 ml-10">
+            {Object.entries(cooldownDuplicates).map(([docType, detail]) => {
+              const displayName = docType === "bank_statement" ? "Bank Statement" : docType === "kyc_and_credit" ? "KYC & Credit" : "Income Details";
+              const processedDate = new Date(detail.processed_at).toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" });
+              const cooldownDate = new Date(detail.cooldown_until).toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" });
+              return (
+                <div key={docType} className="bg-white border border-amber-200 rounded-md p-3 flex items-start gap-3">
+                  <span className="material-symbols-outlined text-[20px] text-amber-500 mt-0.5">
+                    description
+                  </span>
+                  <div className="flex-1">
+                    <p className="text-[13px] font-semibold text-amber-900">{displayName}</p>
+                    <p className="text-[11px] text-amber-700 mt-0.5">
+                      Previously processed on <span className="font-medium">{processedDate}</span> under application <span className="font-mono font-medium">{detail.previous_application_id}</span>
+                    </p>
+                    <p className="text-[11px] text-amber-700">
+                      Available again on <span className="font-medium">{cooldownDate}</span>
+                      <span className="ml-1 text-amber-600 font-semibold">({detail.days_remaining} days remaining)</span>
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex justify-end mt-3">
+            <Button
+              onClick={() => {
+                setCooldownDuplicates(null);
+                setUploadedFiles({ bank: null, kyc: null, income: null });
+              }}
+              className="bg-amber-600 text-white text-xs font-mono font-medium px-4 py-1.5 rounded hover:bg-amber-700 transition-colors"
+            >
+              Upload Different Documents
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Card: New Application Analysis */}
       {(currentStep === "upload" || currentStep === "processing") && (
         <div className="bg-surface-container-lowest border border-outline-variant rounded-lg p-4 transition-all duration-500 overflow-hidden">

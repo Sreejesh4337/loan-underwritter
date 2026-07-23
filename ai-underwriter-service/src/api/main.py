@@ -22,12 +22,15 @@ from src.api.schemas import (
 from src.graph.build_graph import DEFAULT_CHECKPOINT_DB, compile_graph
 from src.db import (
     save_document,
+    get_document,
     get_output,
     get_applicant_profile_by_run_id,
     get_salary_credits_by_run_id,
+    save_document_fingerprint,
 )
 from src.schemas.underwriting import DocumentType
 from src.validation.document_validator import validate_document
+from src.validation.document_dedup import check_duplicates, compute_file_hash
 
 EXPECTED_SLOT_TYPES: dict[str, DocumentType] = {
     "bank_statement": DocumentType.BANK_STATEMENT,
@@ -72,7 +75,7 @@ def _next_application_id() -> str:
 from langfuse.langchain import CallbackHandler
 from langfuse import propagate_attributes, get_client
 
-def _execute(application_id: str, run_id: str, thread_id: str, resume: bool) -> None:
+def _execute(application_id: str, run_id: str, thread_id: str, resume: bool, doc_hashes: dict[str, str] | None = None) -> None:
     try:
         langfuse_handler = CallbackHandler()
     except Exception as e:
@@ -119,6 +122,18 @@ def _execute(application_id: str, run_id: str, thread_id: str, resume: bool) -> 
                 "created_at": _now(),
             }
         )
+
+        # Save document fingerprints only on successful completion
+        if status == "completed" and doc_hashes:
+            for doc_type, file_hash in doc_hashes.items():
+                try:
+                    save_document_fingerprint(file_hash, doc_type, application_id, run_id)
+                except Exception as fp_exc:
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        "Failed to save fingerprint for %s in run %s: %s",
+                        doc_type, run_id, fp_exc,
+                    )
 
         if langfuse_handler:
             langfuse_client = get_client()
@@ -169,7 +184,30 @@ async def upload_and_run(
             detail={"message": "Document validation failed.", "errors": errors},
         )
 
+    # ── Deduplication check: block entire upload if ANY document is in cooldown ──
+    duplicates = check_duplicates(contents)
+    if duplicates:
+        dup_detail = {
+            doc_type: {
+                "previous_application_id": info.previous_application_id,
+                "processed_at": info.processed_at,
+                "cooldown_until": info.cooldown_until,
+                "days_remaining": info.days_remaining,
+            }
+            for doc_type, info in duplicates.items()
+        }
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Document(s) already processed within the cooldown period.",
+                "duplicates": dup_detail,
+            },
+        )
+
     application_id = _next_application_id()
+
+    # Compute hashes now so we can save them after the pipeline succeeds
+    doc_hashes = {doc_type: compute_file_hash(data) for doc_type, data in contents.items()}
 
     save_document(application_id, "bank_statement", contents["bank_statement"])
     save_document(application_id, "kyc_and_credit", contents["kyc_and_credit"])
@@ -181,7 +219,7 @@ async def upload_and_run(
     append_run(
         {"run_id": run_id, "application_id": application_id, "thread_id": thread_id, "status": "queued", "created_at": _now()}
     )
-    background_tasks.add_task(_execute, application_id, run_id, thread_id, False)
+    background_tasks.add_task(_execute, application_id, run_id, thread_id, False, doc_hashes)
     return UploadResponse(application_id=application_id, run_id=run_id, thread_id=thread_id, status="queued")
 
 #get function
